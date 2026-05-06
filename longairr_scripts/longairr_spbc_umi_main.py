@@ -25,7 +25,7 @@ from Bio.Seq import Seq
 #
 #                 2) visium_hd
 #                    - exact matching only
-#                    - two whitelist files (BC1 and BC2)
+#                    - BC1 and BC2 information from 10x Genomics
 #                    - fixed base UMI length of 9
 #                    - tries offsets 0/1/2
 #                    - offset nt are included in emitted UMI
