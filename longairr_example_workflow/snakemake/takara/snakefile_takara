@@ -1,0 +1,192 @@
+# Corresponding config file
+configfile: "config.yaml"
+
+locus=config["AIRR_LOCUS"]
+run_seqtag=config["RUN_SEQTAG"]
+
+copy_config=config["COPY_CONFIG"]
+
+# Define the final outputs
+if locus == "ig":
+    rule all:
+        input:
+            expand("{output}sample_demux/{sample}/airr/ig_p_parse-select.tsv",
+                sample=config["samples"],  # Loop through each sample
+                output=config["OUTPUT"]),
+                f"{config['OUTPUT']}/config.yaml" if copy_config else []
+else:
+    rule all:
+            input:
+                expand("{output}sample_demux/{sample}/airr/tr_p_parse-select.tsv",
+                    sample=config["samples"],  # Loop through each sample
+                    output=config["OUTPUT"]),
+                    f"{config['OUTPUT']}/config.yaml" if copy_config else []
+
+
+# Rule: longairr filter
+rule filter:
+    input:
+        fastq=config["INPUT_DUPLEX_FASTQ"]
+    output:
+        filtered=expand("{output}filter_qc/longairr_filtered.fasta", output=config["OUTPUT"])
+    params:
+        minq=config["FILTER_MIN_QUAL"],
+        minl=config["FILTER_MINL"],
+        maxl=config["FILTER_MAXL"],
+        output=config["OUTPUT"]
+    log:
+        f"{config['OUTPUT']}snakemake_logs/filter.log"
+    shell:
+        """
+        longairr filter --min-qual {params.minq} --minl {params.minl} --maxl {params.maxl} \
+                        {input.fastq} {params.output} > {log} 2>&1
+        """
+
+
+# Rule: longairr demux
+rule demux:
+    input:
+        fasta=f"{config['OUTPUT']}filter_qc/longairr_filtered.fasta"
+    output:
+        split_out=expand("{output}sample_demux/{sample}/split_UDI-{sample}.fasta", output=config['OUTPUT'], sample=config["samples"])
+    params:
+        window_length=config["DEMUX_WINDOW_LENGTH"],
+        max_error=config["DEMUX_MAX_ERROR"],
+        output=config["OUTPUT"]
+    log:
+        f"{config['OUTPUT']}snakemake_logs/demux.log"
+    shell:
+        """
+        longairr demux --window-length {params.window_length} --anchor-error {params.max_error} \
+                       {config[DEMUX_UID_FASTA]} {input.fasta} {params.output} > {log} 2>&1
+        """
+
+
+# Rule: longairr collapse
+rule collapse:
+    input:
+        demux_input = f"{config['OUTPUT']}sample_demux/{{sample}}/split_UDI-{{sample}}.fasta"
+    output:
+        consensus=f"{config['OUTPUT']}sample_demux/{{sample}}/collapse/4_longairr_consensus.fasta"
+    params:
+        demux=config["COLLAPSE_DEMUX"],
+        library=config["COLLAPSE_LIBRARY"],
+
+        window_length=config["COLLAPSE_WINDOW_LENGTH"],
+        anchor_error=config["COLLAPSE_ANCHOR_ERROR"],
+        umi_length=config["COLLAPSE_LENGTH"],
+
+        minl=config["COLLAPSE_MINL"],
+        maxl=config["COLLAPSE_MAXL"],
+
+        af=config["COLLAPSE_AF"],
+        gf=config["COLLAPSE_GROUP_FIELD"],
+        af_min_n=config["COLLAPSE_AF_MIN_N"],
+        af_bin=config["COLLAPSE_AF_BIN"],
+        af_margin=config["COLLAPSE_AF_MARGIN"],
+
+        consgap=config["COLLAPSE_CONSGAP"],
+        conserr=config["COLLAPSE_CONSERROR"],
+
+        n_subsample=config["COLLAPSE_N_SUBSAMPLE"],
+        n_chunk=config["COLLAPSE_N_CHUNK"],
+        seed=config["COLLAPSE_SEED"],
+        jobs=config["COLLAPSE_JOBS"],
+        collapse_out = f"{config['OUTPUT']}sample_demux/{{sample}}/"
+    threads: 1
+    log:
+        f"{config['OUTPUT']}snakemake_logs/collapse_{{sample}}.log"
+    shell:
+        """
+        longairr collapse --demux {params.demux} --library {params.library} \
+                      --window-length {params.window_length} --umi-length {params.umi_length} --anchor-error {params.anchor_error} \
+                      --minl {params.minl} --maxl {params.maxl} --adaptive-filter {params.af} --group-field {params.gf} --filter-min-size {params.af_min_n} \
+                      --bin-size {params.af_bin} --peak-margin {params.af_margin} --cons-gap {params.consgap} --cons-error {params.conserr} \
+                      --n-subsample {params.n_subsample} --n-chunk {params.n_chunk} --seed {params.seed} --cjobs {params.jobs} \
+                      {config[COLLAPSE_ANCHOR_FASTA]} {input.demux_input} {params.collapse_out} > {log} 2>&1
+        """
+
+
+if run_seqtag:
+    # Rule: longairr seqtag
+    rule seqtag:
+            input:
+                consensus = f"{config['OUTPUT']}sample_demux/{{sample}}/collapse/4_longairr_consensus.fasta"
+            output:
+                cpass= f"{config['OUTPUT']}sample_demux/{{sample}}/seqtag/longairr_seqtag_primers-pass.fasta"
+            params:
+                split=config["SEQTAG_SPLIT"],
+                window_length=config["SEQTAG_WINDOW_LENGTH"],
+                anchor_error=config["SEQTAG_ANCHOR_ERROR"],
+                primer_field=config["SEQTAG_PRIMER_FIELD"],
+                output= f"{config['OUTPUT']}sample_demux/{{sample}}/"
+            threads: 1
+            log:
+                f"{config['OUTPUT']}snakemake_logs/seqtag_{{sample}}.log"
+            shell:
+                """
+                longairr seqtag --split {params.split} --window-length {params.window_length} \
+                                  --anchor-error {params.anchor_error} --pf {params.primer_field} \
+                                  {config[SEQTAG_FASTA]} {input.consensus} {params.output} > {log} 2>&1
+                """
+
+
+    # Rule: longairr airr
+    rule airr:
+        input:
+            seqtag=f"{config['OUTPUT']}sample_demux/{{sample}}/seqtag/longairr_seqtag_primers-pass.fasta"
+        output:
+            airr_ig=f"{config['OUTPUT']}sample_demux/{{sample}}/airr/ig_p_parse-select.tsv"
+            #airr_ig_tr=f"{config['OUTPUT']}sample_demux/{{sample}}/airr/{{locus}}_p_parse-select.tsv" #test if this works
+        params:
+            prod_heavy=config["AIRR_PH"],
+            locus=config["AIRR_LOCUS"],
+            igblast_dir=config["DATABASES_PARENT"] + "igblast/",
+            germlines_dir=config["DATABASES_PARENT"] + "germlines/imgt/human/vdj/",
+            output=f"{config['OUTPUT']}sample_demux/{{sample}}/"
+        log:
+            f"{config['OUTPUT']}snakemake_logs/airr_{{sample}}.log"
+        shell:
+            """
+            longairr airr --ph {params.prod_heavy} --loci {params.locus} \
+                          {params.igblast_dir} {params.germlines_dir} {input.seqtag} \
+                          {params.output} > {log} 2>&1
+            """
+else:
+    # Rule: longairr nc_airr (skipping longairr seqtag)
+    rule nc_airr:
+            input:
+                consensus = f"{config['OUTPUT']}sample_demux/{{sample}}/collapse/4_longairr_consensus.fasta"
+            output:
+                #airr_ig=f"{config['OUTPUT']}sample_demux/{{sample}}/airr/ig_p_parse-select.tsv"
+                #airr_tr=f"{config['OUTPUT']}sample_demux/{{sample}}/airr/tr_p_parse-select.tsv"
+                airr_ig_tr=f"{config['OUTPUT']}sample_demux/{{sample}}/airr/{{locus}}_p_parse-select.tsv"
+            params:
+                prod_heavy=config["AIRR_PH"],
+                locus=config["AIRR_LOCUS"],
+                igblast_dir=config["DATABASES_PARENT"] + "igblast/",
+                germlines_dir=config["DATABASES_PARENT"] + "germlines/imgt/human/vdj/",
+                output=f"{config['OUTPUT']}sample_demux/{{sample}}/"
+            log:
+                f"{config['OUTPUT']}snakemake_logs/airr_{{sample}}.log"
+            shell:
+                """
+                longairr airr --ph {params.prod_heavy} --loci {params.locus} \
+                            {params.igblast_dir} {params.germlines_dir} {input.consensus} \
+                            {params.output} > {log} 2>&1
+                """
+
+
+# Rule: copy specified config.yaml to OUTPUT
+rule copy_config:
+    input:
+        config_in=config['CONFIG_PATH']
+    output:
+        config=f"{config['OUTPUT']}/config.yaml"
+    params:
+        config_in=config['CONFIG_PATH']
+    shell:
+        """
+        cp {params.config_in} {output.config}
+
+        """

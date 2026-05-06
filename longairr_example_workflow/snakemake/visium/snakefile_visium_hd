@@ -1,0 +1,224 @@
+# Configuration file
+configfile: "config.yaml"
+
+locus_mapping = list(zip(config["SEQTAG_regex"], config["locus_igblast"]))
+copy_config = config["COPY_CONFIG"]
+
+def collapse_extra_args(config):
+    library = config["COLLAPSE_LIBRARY"]
+
+    if library == "visium":
+        return f"--visium-spbc {config['VISIUM_SPBCS_TXT']}"
+    elif library == "visiumhd":
+        return f"--hd-spbc1 {config['VISIUMHD_SPBC1_TXT']} --hd-spbc2 {config['VISIUMHD_SPBC2_TXT']}"
+    elif library == "bulk":
+        return ""
+    else:
+        raise ValueError(f"Unsupported COLLAPSE_LIBRARY: {library}")
+
+locus_mapping_dict = {pair[1]: pair[0] for pair in locus_mapping}
+
+# Define final outputs
+rule all:
+    input:
+        [f"{config['OUTPUT']}airr_split/{regex}/airr/{igblast}_p_parse-select.tsv"
+         for regex, igblast in locus_mapping] + (
+            [f"{config['OUTPUT']}/config.yaml"] if copy_config else []
+        )
+
+
+# Rule: longairr filter
+rule filter:
+    input:
+        fastq=config["INPUT_FASTQ"]
+    output:
+        filtered=f"{config['OUTPUT']}filter_qc/longairr_filtered.fasta"
+    params:
+        minq=config["FILTER_MIN_QUAL"],
+        minl=config["FILTER_MIN_L"],
+        maxl=config["FILTER_MAX_L"],
+        output=config["OUTPUT"]
+    log:
+        f"{config['OUTPUT']}snakemake_logs/filter.log"
+    shell:
+        """
+        longairr filter \
+            --min-qual {params.minq} \
+            --minl {params.minl} \
+            --maxl {params.maxl} \
+            {input.fastq} {params.output} \
+            > {log} 2>&1
+        """
+
+
+# Rule: longairr collapse
+rule collapse:
+    input:
+        filtered=f"{config['OUTPUT']}filter_qc/longairr_filtered.fasta"
+    output:
+        consensus=f"{config['OUTPUT']}collapse/4_longairr_consensus.fasta"
+    params:
+        demux=config["COLLAPSE_DEMUX"],
+        library=config["COLLAPSE_LIBRARY"],
+
+        window_length=config["COLLAPSE_WINDOW_LENGTH"],
+        anchor_error=config["COLLAPSE_ANCHOR_ERROR"],
+        umi_length=config["COLLAPSE_LENGTH"],
+
+        spbc_error=config["COLLAPSE_SPBC_ERROR"],
+        spbc_failed=config["COLLAPSE_SPBC_FAILED"],
+        spbc_length=config["COLLAPSE_SPBC_LENGTH"],
+
+        minl=config["COLLAPSE_MINL"],
+        maxl=config["COLLAPSE_MAXL"],
+
+        af=config["COLLAPSE_AF"],
+        gf=config["COLLAPSE_GROUP_FIELD"],
+        af_min_n=config["COLLAPSE_AF_MIN_N"],
+        af_bin=config["COLLAPSE_AF_BIN"],
+        af_margin=config["COLLAPSE_AF_MARGIN"],
+
+        consgap=config["COLLAPSE_CONSGAP"],
+        conserr=config["COLLAPSE_CONSERROR"],
+
+        n_subsample=config["COLLAPSE_N_SUBSAMPLE"],
+        n_chunk=config["COLLAPSE_N_CHUNK"],
+        seed=config["COLLAPSE_SEED"],
+        jobs=config["COLLAPSE_JOBS"],
+
+        collapse_out=config["OUTPUT"],
+        extra_args=collapse_extra_args(config)
+    log:
+        f"{config['OUTPUT']}snakemake_logs/collapse.log"
+    shell:
+        """
+        longairr collapse \
+            --demux {params.demux} \
+            --library {params.library} \
+            --window-length {params.window_length} \
+            --umi-length {params.umi_length} \
+            --anchor-error {params.anchor_error} \
+            --spbc-error {params.spbc_error} \
+            --spbc-failed {params.spbc_failed} \
+            --spbc-length {params.spbc_length} \
+            --minl {params.minl} \
+            --maxl {params.maxl} \
+            --adaptive-filter {params.af} \
+            --group-field {params.gf} \
+            --filter-min-size {params.af_min_n} \
+            --bin-size {params.af_bin} \
+            --peak-margin {params.af_margin} \
+            --cons-gap {params.consgap} \
+            --cons-error {params.conserr} \
+            --n-subsample {params.n_subsample} \
+            --n-chunk {params.n_chunk} \
+            --seed {params.seed} \
+            --cjobs {params.jobs} \
+            {params.extra_args} \
+            {config[COLLAPSE_ANCHOR_FASTA]} \
+            {input.filtered} \
+            {params.collapse_out} \
+            > {log} 2>&1
+        """
+
+
+# Rule: longairr seqtag
+rule seqtag:
+    input:
+        consensus=f"{config['OUTPUT']}collapse/4_longairr_consensus.fasta"
+    output:
+        combined=expand(
+            "{output}seqtag/{regex}/combined_{regex}.fasta",
+            output=config["OUTPUT"],
+            regex=config["SEQTAG_regex"]
+        )
+    params:
+        split=config["SEQTAG_SPLIT"],
+        window_length=config["SEQTAG_WINDOW_LENGTH"],
+        anchor_error=config["SEQTAG_ANCHOR_ERROR"],
+        primer_field=config["SEQTAG_PRIMER_FIELD"],
+        seqtag_regex=config["SEQTAG_SPLIT_REGEX"],
+        output=config["OUTPUT"]
+    log:
+        f"{config['OUTPUT']}snakemake_logs/seqtag.log"
+    shell:
+        """
+        longairr seqtag \
+            --split {params.split} \
+            --split-regex {params.seqtag_regex} \
+            --window-length {params.window_length} \
+            --anchor-error {params.anchor_error} \
+            --pf {params.primer_field} \
+            {config[SEQTAG_FASTA]} \
+            {input.consensus} \
+            {params.output} \
+            > {log} 2>&1
+        """
+
+
+# Rule: longairr airr / BCR loci
+if "ig" in locus_mapping_dict:
+    rule airr_ig:
+        input:
+            seqtag_ig=f"{config['OUTPUT']}seqtag/{locus_mapping_dict['ig']}/combined_{locus_mapping_dict['ig']}.fasta"
+        output:
+            airr_ig=f"{config['OUTPUT']}airr_split/{locus_mapping_dict['ig']}/airr/ig_p_parse-select.tsv"
+        params:
+            prod_heavy=config["AIRR_PH"],
+            igblast_dir=config["DATABASES_PARENT"] + "igblast/",
+            germlines_dir=config["DATABASES_PARENT"] + "germlines/imgt/human/vdj/",
+            output=f"{config['OUTPUT']}airr_split/{locus_mapping_dict['ig']}/"
+        log:
+            f"{config['OUTPUT']}snakemake_logs/airr_{locus_mapping_dict['ig']}_ig.log"
+        shell:
+            """
+            longairr airr \
+                --ph {params.prod_heavy} \
+                --loci ig \
+                {params.igblast_dir} \
+                {params.germlines_dir} \
+                {input.seqtag_ig} \
+                {params.output} \
+                > {log} 2>&1
+            """
+
+
+# Rule: longairr airr / TCR loci
+if "tr" in locus_mapping_dict:
+    rule airr_tr:
+        input:
+            seqtag_tr=f"{config['OUTPUT']}seqtag/{locus_mapping_dict['tr']}/combined_{locus_mapping_dict['tr']}.fasta"
+        output:
+            airr_tr=f"{config['OUTPUT']}airr_split/{locus_mapping_dict['tr']}/airr/tr_p_parse-select.tsv"
+        params:
+            prod_heavy=config["AIRR_PH"],
+            igblast_dir=config["DATABASES_PARENT"] + "igblast/",
+            germlines_dir=config["DATABASES_PARENT"] + "germlines/imgt/human/vdj/",
+            output=f"{config['OUTPUT']}airr_split/{locus_mapping_dict['tr']}/"
+        log:
+            f"{config['OUTPUT']}snakemake_logs/airr_{locus_mapping_dict['tr']}_tr.log"
+        shell:
+            """
+            longairr airr \
+                --ph {params.prod_heavy} \
+                --loci tr \
+                {params.igblast_dir} \
+                {params.germlines_dir} \
+                {input.seqtag_tr} \
+                {params.output} \
+                > {log} 2>&1
+            """
+
+
+# Rule: copy specified config.yaml to OUTPUT
+rule copy_config:
+    input:
+        config_in=config["CONFIG_PATH"]
+    output:
+        config=f"{config['OUTPUT']}/config.yaml"
+    params:
+        config_in=config["CONFIG_PATH"]
+    shell:
+        """
+        cp {params.config_in} {output.config}
+        """

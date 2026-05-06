@@ -1,0 +1,99 @@
+
+################################################################################
+#
+#   DESCRIPTION: LongAIRR config.yaml for snakemake_takara
+#      DATASETS: SMARTSEQ (+UMIS) AIRR data [BCR only (or TCR only) /
+#                                            multiplexed samples]
+# 
+#         Usage: 
+#
+#        AUTHOR: Jonas Schuck, jschuckdev@gmail.com
+#    BUG-REPORT: https://github.com/AGImkeller/AIRR_workflow/issues
+#
+################################################################################
+
+#-----longairr filter parameters------------------#
+FILTER_MIN_QUAL: 21             # --min-qual: default 0
+FILTER_MINL: 400   #400             # --minl:     default -1
+FILTER_MAXL: 2500  #2500              # --maxl:     default -1
+
+
+#-----longairr demux parameters---------------------------#
+DEMUX_WINDOW_LENGTH: 500        # --window-length: default 50
+DEMUX_MAX_ERROR: 0.2            # --anchor-error:  default 0.2
+
+
+#-----longairr collapse parameters--------------------#
+COLLAPSE_DEMUX: True                 # --demux:          default True
+COLLAPSE_LIBRARY: "bulk"             # dont touch
+
+COLLAPSE_WINDOW_LENGTH: 500          # --window-length:  default 50
+COLLAPSE_ANCHOR_ERROR: 0.2           # --anchor-error:   default 0.2
+COLLAPSE_LENGTH: 12                  # --umi-length:     default 12
+
+COLLAPSE_MINL: -1
+COLLAPSE_MAXL: -1
+
+COLLAPSE_AF: True
+COLLAPSE_GROUP_FIELD: "UMI"
+COLLAPSE_AF_MIN_N: 5
+COLLAPSE_AF_BIN: 100
+COLLAPSE_AF_MARGIN: 0.1
+
+COLLAPSE_CONSGAP: 0.5
+COLLAPSE_CONSERROR: 0.2
+
+COLLAPSE_N_SUBSAMPLE: 750
+COLLAPSE_N_CHUNK: 30
+COLLAPSE_SEED: 1
+COLLAPSE_JOBS: 5
+
+
+#-----longairr seqtag parameters----------------#
+RUN_SEQTAG: True                # True | False
+
+SEQTAG_SPLIT: False              # --split:          default False
+SEQTAG_WINDOW_LENGTH: 250        # --window-length:  default 220
+SEQTAG_ANCHOR_ERROR: 0.1         # --anchor-error:   default 0.2
+SEQTAG_PRIMER_FIELD: "ISOTYPE"   # --pf:             default "ISOTYPE"
+
+
+#-----longairr airr parameters--------------------#
+AIRR_PH: True                 # --ph:  default True
+AIRR_LOCUS: "ig"              # loci to run longairr airr on; --loci: default ig
+
+
+#-------------input / output directories------------------#
+#filter
+INPUT_DUPLEX_FASTQ: "/home/jonas/Desktop/Airr_workflow/repo/7_n_keep_test/input/bulk/r7/simplex_duplex.fastq"    # input_fastq
+
+#demux
+DEMUX_UID_FASTA: "/home/jonas/Desktop/Airr_workflow/repo/nanoairr_inputs/uids/UID_barcode_r7.fasta"        # barcodes_input
+
+#collapse
+COLLAPSE_ANCHOR_FASTA: "/home/jonas/Desktop/Airr_workflow/repo/nanoairr_inputs/UMI_barcode.fasta"           # anchor_seq_input
+
+#seqtag
+SEQTAG_FASTA: "/home/jonas/Desktop/Airr_workflow/repo/nanoairr_inputs/IGH_7.fasta"                   # isotype_seqs_input
+
+#airr
+DATABASES_PARENT: "/home/jonas/Desktop/Airr_workflow/nanoairr_1.2/databases/"       # parent containing inputdir_igblast and inputdir_germlines
+
+#output directory
+OUTPUT: "/home/jonas/Desktop/Airr_workflow/repo/9_longairr_test/results/bulk/umi_af5/"       # outdir
+
+
+# specify samples (match with IDS from DEMUX_UID_FASTA)
+samples:
+  - UID9
+  - UID10
+
+#-------------------------misc---------------------------#
+# Specify 'True' if you want to copy the used config.yaml to generate the output data into the 'OUTPUT' directory
+
+
+COPY_CONFIG: True
+
+# path to used config.yaml
+CONFIG_PATH: "/home/jonas/Desktop/Airr_workflow/repo/nanoairr/longairr_example_workflow/snakemake/takara/config.yaml"
+

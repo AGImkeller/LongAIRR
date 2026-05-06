@@ -1,0 +1,36 @@
+name: longairr
+channels:
+  - hcc
+  - bioconda
+  - conda-forge
+dependencies:
+  - python=3.10.0
+  - biopython=1.83
+  - blast=2.16.0
+  - igblast=1.22.0
+  - muscle=3.8.1551
+  - nanoget=1.19.3
+  - nanoplot=1.44.1
+  - numpy=1.24.4
+  - pandas=2.0.3
+  - presto=0.7.5
+  - samtools=1.21
+  - scipy=1.10.1
+  - seqkit=2.9.0
+  - snakemake=7.32.4
+  - vsearch=2.30.0
+  - yaml=0.2.5
+  - pysam=0.22
+  - pyyaml=6.0.2
+  - python-dateutil=2.9.0.post0
+  - python-fastjsonschema=2.20.0
+  - python-irodsclient=2.1.0
+  - python-kaleido=0.2.1
+  - python-tzdata=2024.2
+  - python_abi=3.10
+  - pyarrow=17.0.0=py310hb7f781d_2
+  - pyarrow-core=17.0.0=py310hac404ae_2_cpu
+  - pip
+  - pip:
+      - airr==1.5.1
+      - changeo==1.3.3

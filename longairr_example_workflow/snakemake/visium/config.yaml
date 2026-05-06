@@ -1,0 +1,97 @@
+
+################################################################################
+#
+#   DESCRIPTION: LongAIRR config.yaml for snakemake_visium 
+#      DATASETS: 10x Visium AIRR data [Combined BCR / TCR]
+# 
+#         Usage: 
+#
+#        AUTHOR: Jonas Schuck, jschuckdev@gmail.com
+#    BUG-REPORT: https://github.com/AGImkeller/AIRR_workflow/issues
+#
+################################################################################
+
+#-------------longairr filter parameters------------------#
+FILTER_MIN_QUAL: 17                  # --min-qual: default 0
+FILTER_MIN_L: 420
+FILTER_MAX_L: 6000
+
+
+#-------------longairr collapse parameters--------------------#
+COLLAPSE_DEMUX: FALSE                 # --demux:          default True
+COLLAPSE_LIBRARY: "visiumhd"
+
+COLLAPSE_WINDOW_LENGTH: 1200         # --window-length:  default 50
+COLLAPSE_ANCHOR_ERROR: 0.2           # --anchor-error:   default 0.2
+COLLAPSE_LENGTH: 12                  # --umi-length:     default 12
+
+COLLAPSE_SPBC_ERROR: 0.0
+COLLAPSE_SPBC_FAILED: TRUE
+COLLAPSE_SPBC_LENGTH: 16
+
+COLLAPSE_MINL: 700
+COLLAPSE_MAXL: 4000
+
+COLLAPSE_AF: TRUE
+COLLAPSE_GROUP_FIELD: "UMISPBC" #or "UMI" / or "UMISPBC"
+COLLAPSE_AF_MIN_N: 5
+COLLAPSE_AF_BIN: 100
+COLLAPSE_AF_MARGIN: 0.05
+
+COLLAPSE_CONSGAP: 0.5
+COLLAPSE_CONSERROR: 0.2
+
+COLLAPSE_N_SUBSAMPLE: 750
+COLLAPSE_N_CHUNK: 35
+COLLAPSE_SEED: 1
+COLLAPSE_JOBS: 7
+
+
+#-------------longairr seqtag parameters----------------#
+SEQTAG_SPLIT: TRUE              # --split:          default False
+SEQTAG_WINDOW_LENGTH: 3000      # --window-length:  default 220
+SEQTAG_ANCHOR_ERROR: 0.1        # --anchor-error:   default 0.2
+SEQTAG_PRIMER_FIELD: "ISOTYPE"  # --pf:             default "ISOTYPE"
+SEQTAG_SPLIT_REGEX: "Ig,TCR"    # --split-regex:    default "Ig,TCR"
+SEQTAG_NPROC_ALIGN: 12
+SEQTAG_regex:                   # provide the same values as stated in LOCUS_SPLIT_REGEX
+     - "Ig"
+     - "TCR"
+
+
+#-------------longairr airr parameters--------------------#
+AIRR_PH: TRUE                  # --ph:  default True
+locus_igblast:
+    - "ig"    # loci to run longairr airr on; --loci: default ig
+    - "tr"    # t cell receptor
+
+
+#-------------input / output directories------------------#
+#filter
+INPUT_FASTQ: "/home/jonas/mnt_AG_Imkeller/group_members/schuck/immcantation_analysis/visium_hd/longairr_sp21hd/basecalling/simplex_duplex.fastq"     # input_fastq
+
+#collapse
+COLLAPSE_ANCHOR_FASTA: "/home/jonas/Desktop/Airr_workflow/repo/nanoairr_inputs/illumina_r1.fasta"            # anchor_seq_input
+#VISIUM_SPBCS_TXT: "/home/jonas/Desktop/Airr_workflow/repo/nanoairr_inputs/visium-v1_coordinates.txt"    # valid_sp_barcodes.txt
+
+VISIUMHD_SPBC1_TXT: "/home/jonas/Desktop/Airr_workflow/repo/nanoairr_inputs/visium_hd_v1_bc1.txt"
+VISIUMHD_SPBC2_TXT: "/home/jonas/Desktop/Airr_workflow/repo/nanoairr_inputs/visium_hd_v1_bc2.txt"
+
+#seqtag
+SEQTAG_FASTA: "/home/jonas/Desktop/Airr_workflow/repo/nanoairr_inputs/new_general_constant_3.fasta"  # isotype_seqs_input
+
+#airr
+DATABASES_PARENT: "/home/jonas/Desktop/Airr_workflow/repo/nanoairr_1.5/databases/"    # parent containing inputdir_igblast and inputdir_germlines
+
+#output directory
+OUTPUT: "/home/jonas/hd_out/sd17/"     # outdir
+
+
+#-------------------------misc---------------------------#
+#Specify 'True' if you want to copy the used config.yaml to generate the output data into the 'OUTPUT' directory
+COPY_CONFIG: True
+
+# path to used config.yaml
+CONFIG_PATH: "/home/jonas/Desktop/Airr_workflow/repo/nanoairr/longairr_example_workflow/snakemake/visium/config.yaml"
+
+
