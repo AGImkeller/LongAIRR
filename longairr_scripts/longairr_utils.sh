@@ -9,7 +9,7 @@
 #                 that are frequently used in the main longairr.sh script
 #
 #        AUTHOR:  Jonas Schuck, jschuckdev@gmail.com
-#    BUG-REPORT:  https://github.com/AGImkeller/AIRR_workflow/issues
+#    BUG-REPORT:  https://github.com/AGImkeller/LongAIRR/issues
 #
 #================================================================#
 

@@ -6,10 +6,9 @@ import gzip
 from Bio import SeqIO
 from Bio.Seq import Seq
 
-
 #================================================================#
 #
-#        Script:  longairr_spbc_umi.py
+#        Script:  longairr_spbc_umi_main.py
 #         Usage:  Internal script used in 'longairr.sh/longairr collapse'
 #
 #   DESCRIPTION:  Annotates spatial barcode / UMI information in anchor-cut reads.
@@ -17,30 +16,30 @@ from Bio.Seq import Seq
 #                 Supports two spatial modes:
 #
 #                 1) visium
-#                    - fixed SPBC length
-#                    - fixed UMI length
-#                    - one SPBC whitelist
+#                    - fixed SPBC length (default 16 nt)
+#                    - fixed UMI length (default 12 nt)
+#                    - one SPBC whitelist (e.g. visium-v1_coordinates.txt from 10x Genomics SpaceRanger)
 #                    - exact match or optional mismatch-based correction
-#                    - header emits: SPBC, UMI, SPBCUMI
+#                    - Sequence header slots: SPBC, UMI, SPBCUMI
 #
 #                 2) visium_hd
 #                    - exact matching only
 #                    - BC1 and BC2 information from 10x Genomics
-#                    - fixed base UMI length of 9
+#                    - Base UMI length of 9
 #                    - tries offsets 0/1/2
 #                    - offset nt are included in emitted UMI
-#                    - header emits: UMI, BC1, BC2, SPBC, UMISPBC, X, Y, SPBC10X
+#                    - Sequence header slots: UMI, BC1, BC2, SPBC, UMISPBC, X, Y, SPBC10X
+#
+#                  Script can return reads that dont map to any
+#                  valid SPBC using the --failed flag. UMI and SPBC sequence segments
+#                  can be either cut (--cut option) or kept.
 #
 #        AUTHOR:  Jonas Schuck, jschuckdev@gmail.com
-#    BUG-REPORT:  https://github.com/AGImkeller/AIRR_workflow/issues
+#    BUG-REPORT:  https://github.com/AGImkeller/LongAIRR/issues
 #
 #================================================================#
 
-
-# ----------------------------
-# Generic helpers
-# ----------------------------
-
+# General Helpers
 def parse_bool(value):
     if isinstance(value, bool):
         return value
@@ -57,11 +56,10 @@ def write_failed_record(record, failed_handle, reason):
         SeqIO.write(record, failed_handle, "fasta")
 
 
-# ----------------------------
-# Classic Visium helpers
-# ----------------------------
+# ----------------------------- Visium V1 --------------------------------------
 
-# Load Visium SPBC whitelist and optional coordinates [visium_v1.txt]
+# Load Visium SPBC whitelist and optional coordinates 
+# [visium_v1_coordinates.txt from 10x Genomics SpaceRanger]
 def load_visium_spbc_info(file_path):
     spbc_info = {}
     valid_spbc_set = set()
@@ -177,21 +175,6 @@ def find_closest_spbc(spbc,
     return closest_spbc
 
 
-# ----------------------------
-# Visium HD helpers
-# ----------------------------
-
-# Load Visium HD SPBC whitelists for Bc1 and Bc2
-def load_sequence_list(file_path):
-    seqs = []
-    with open_txt(file_path, "rt") as f:
-        for line in f:
-            seq = line.split()[0]
-            if seq:
-                seqs.append(seq)
-    return seqs
-
-
 # Annotation of UMI and SPBC in Visium v1 long reads
 class VisiumDecoder:
     def __init__(self, spbc_file, spbc_length=16, umi_length=12, mismatch_fraction=0.0):
@@ -253,8 +236,20 @@ class VisiumDecoder:
             "header_fields": header_fields,
         }
 
+# ----------------------------- Visium HD 3'------------------------------------
 
-# Annotation of UMI and SPBC (Bc1 + Bc2) in Visium HD v1 long reads
+# Load Visium HD 3' SPBC whitelists for Bc1 and Bc2
+def load_sequence_list(file_path):
+    seqs = []
+    with open_txt(file_path, "rt") as f:
+        for line in f:
+            seq = line.split()[0]
+            if seq:
+                seqs.append(seq)
+    return seqs
+
+
+# Annotation of UMI and SPBC (Bc1 + Bc2) in Visium HD 3' long reads
 class VisiumHDDecoder:
     def __init__(self, bc1_file, bc2_file, umi_base_length=9, offsets=(0, 1, 2),
         split_order=((15, 14), (15, 15), (16, 14), (16, 15)), hd_bins="002um"):
@@ -334,10 +329,8 @@ class VisiumHDDecoder:
 
         return None
 
+# ----------------------------- Data processing --------------------------------
 
-# ----------------------------
-# Shared processing loop
-# ----------------------------
 # main function, read-in, decoding, cut off annotated segment and output
 def annotate_spatial_reads(input_fasta, output_fasta, decoder, failed_fasta=None, cut=True):
     cut = parse_bool(cut)
@@ -403,13 +396,13 @@ def parse_args():
     parser.add_argument("--cut", type=str, default="True", help="Specify whether to cut annotated segments from sequence (default: True)")
     parser.add_argument("--spatial_mode", choices=["visium", "visiumhd"], default="visium", help="Spatial barcode mode (default: visium)")
 
-    # Visium arguments
+    # Visium V1 arguments
     parser.add_argument("--spbc_file", help="Path to valid SPBC whitelist file (Visium mode)")
     parser.add_argument("--spbc_length", type=int, default=16, help="Length of the SPBC sequence in Visium mode (default: 16)")
     parser.add_argument("--umi_length", type=int, default=12, help="Length of the UMI sequence in Visium mode (default: 12)")
     parser.add_argument("--mismatch_fraction", type=float, default=0.0, help="Fraction of allowed mismatches between SPBCs in Visium mode (default: 0.0)")
 
-    # Visium HD arguments
+    # Visium HD 3' arguments
     parser.add_argument("--bc1_file", help="Path to valid BC1 whitelist file (Visium HD mode)")
     parser.add_argument("--bc2_file", help="Path to valid BC2 whitelist file (Visium HD mode)")
     parser.add_argument("--hd_umi_base_length", type=int, default=9, help="Base UMI length for Visium HD mode before offset nt are included (default: 9)")

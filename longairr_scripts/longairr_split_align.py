@@ -26,7 +26,7 @@ import math
 #                 less groups if the soft-limit condition is met.
 #
 #        AUTHOR:  Jonas Schuck, jschuckdev@gmail.com
-#    BUG-REPORT:  https://github.com/AGImkeller/AIRR_workflow/issues
+#    BUG-REPORT:  https://github.com/AGImkeller/LongAIRR/issues
 #
 #================================================================#
 

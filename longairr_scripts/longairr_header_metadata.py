@@ -2,7 +2,6 @@
 
 import argparse
 
-
 #================================================================#
 #
 #        Script:  longairr_header_metadata.py
@@ -16,7 +15,7 @@ import argparse
 #                 and their counts (PRCOUNT) are also appended.
 #
 #        AUTHOR:  Jonas Schuck, jschuckdev@gmail.com
-#    BUG-REPORT:  https://github.com/AGImkeller/AIRR_workflow/issues
+#    BUG-REPORT:  https://github.com/AGImkeller/LongAIRR/issues
 #
 #================================================================#
 
@@ -98,12 +97,7 @@ def parse_args():
     )
     parser.add_argument("--input", required=True, help="Input FASTA")
     parser.add_argument("-o", "--output", required=True, help="Output FASTA")
-    parser.add_argument(
-        "--library",
-        choices=["bulk", "visium", "visiumhd"],
-        default="visium",
-        help="Library type (default: visium)"
-    )
+    parser.add_argument("--library", choices=["bulk", "visium", "visiumhd"], default="visium", help="Library type (default: visium)")
     return parser.parse_args()
 
 

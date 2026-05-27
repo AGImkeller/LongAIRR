@@ -7,8 +7,8 @@ import os
 
 #================================================================#
 #
-#        Script:  nanoairr_trim_umi.py
-#         Usage:  Internal script used in 'nanoairr.sh/nanoairr umis'
+#        Script:  longairr_trim_umis.py
+#         Usage:  Internal script used in 'longairr.sh/longairr collapse'
 #
 #   DESCRIPTION:  Script that modifies the barcode in the BARCODE slot
 #                 of the header based on the '--forward' parameter and specified length.
@@ -16,7 +16,7 @@ import os
 #                 Otherwise, take the first 'length' characters.
 #
 #        AUTHOR:  Jonas Schuck, jschuckdev@gmail.com
-#    BUG-REPORT:  https://github.com/AGImkeller/AIRR_workflow/issues
+#    BUG-REPORT:  https://github.com/AGImkeller/LongAIRR/issues
 #
 #================================================================#
 

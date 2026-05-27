@@ -13,7 +13,7 @@ source ./longairr_scripts/longairr_version.sh
 #                 which is required input for LongAIRR.
 #
 #        AUTHOR:  Jonas Schuck, jschuckdev@gmail.com
-#    BUG-REPORT:  https://github.com/AGImkeller/AIRR_workflow/issues
+#    BUG-REPORT:  https://github.com/AGImkeller/LongAIRR/issues
 #
 #================================================================#
 
@@ -94,7 +94,6 @@ while [[ $# -gt 0 ]]; do
         echo "--species option requires an argument." >&2
         exit 1
       fi
-      shift 2
       ;;
     --env)
       env_bin=$(echo "$2" | tr '[:lower:]' '[:upper:]')
@@ -320,7 +319,7 @@ EOF
     echo "|                                                                      |"
     echo "|----------------------LongAIRR Setup complete-------------------------|"
     echo "|                                                                      |"
-    echo "|      Run 'source $HOME/.bashrc' to update your PATH                "
+    echo "|      Run 'source $HOME/.bashrc' to update your PATH                  |"
     echo "|                       or restart the terminal                        |"
     echo "|Then you can run the tool within the activated 'longairr' environment |"
     echo "|                                                                      |"

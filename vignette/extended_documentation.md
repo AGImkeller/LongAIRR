@@ -6,7 +6,7 @@ parameter descriptions for the different **LongAIRR** modules. We will also high
 advanced use-cases.
 
 <p align="center">
-  <img src="./figures/longairr_profiling_workflow.png" width="800" />
+  <img src="./figures/longairr_profiling_overview.png" width="800" />
 </p>
 
 ## Table of Content
@@ -158,7 +158,7 @@ ___
 
 **Contact**: Schuck@med.uni-frankfurt.de
 
-**Issues/Bug-report:**: [LongAIRR-Issues](https://github.com/AGImkeller/AIRR_workflow/issues)
+**Issues/Bug-report:**: [LongAIRR-Issues](https://github.com/AGImkeller/LongAIRR/issues)
 
 ___
 [**BACK TO TOP**](#Table-of-Content)

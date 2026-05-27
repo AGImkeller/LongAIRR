@@ -8,7 +8,7 @@
 #   DESCRIPTION:  Download and format germlines from the IMGT website
 #
 #        AUTHOR:  Jonas Schuck, jschuckdev@gmail.com
-#    BUG-REPORT:  https://github.com/AGImkeller/AIRR_workflow/issues
+#    BUG-REPORT:  https://github.com/AGImkeller/LongAIRR/issues
 #
 #          NOTE: Script taken and extended from:
 #                https://bitbucket.org/kleinstein/immcantation/src/master/scripts/fetch_imgtdb.sh

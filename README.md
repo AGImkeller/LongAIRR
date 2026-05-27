@@ -14,7 +14,7 @@ and established tools from the [Immcantation framework](https://immcantation.rea
 to reliably generate antigen receptor sequences from long-read sequencing data.
 
 <p align="center">
-  <img src="./vignette/figures/longairr_profiling_workflow.png" width="800" />
+  <img src="./vignette/figures/longairr_profiling_overview.png" width="800" />
 </p>
 
 ___
@@ -64,11 +64,10 @@ conda activate base
 Create a directory for LongAIRR and download the repository:
 
 ```markdown
-mkdir -d path/to/longairr
-cd path/to/longairr
+mkdir -d install/here
+cd install/here
 
-curl -u github-username:token -L https://github.com/AGImkeller/AIRR_workflow/archive/refs/heads/visium_hd.zip -o longairr.zip
-unzip longairr.zip
+git clone https://github.com/AGImkeller/LongAIRR.git
 ```
 
 ### Run install.sh
@@ -78,7 +77,7 @@ the required databases and set up the software environment.
 
 Key Options:
 -  `--fetch-db TRUE`: Downloads the required IMGT/IgBlast reference database.
--  `--db-dir [path]`: Specifies the directory to store the reference database.
+-  `--save-db [path]`: Specifies the directory to store the reference database.
 -  `--species [name]`: Specifies the species for the IMGT reference (e.g., human or mouse).
 -  `--env TRUE|FALSE`: Sets up 'longairr' conda environment
 
@@ -96,10 +95,10 @@ you will only be able to run the functionalities in the activated conda environm
 **Example commands**
 
 ```markdown
-cd path/to/longairr
+cd path/to/LongAIRR
 
-#full example
-bash install.sh --fetch-db TRUE --db-dir ./ --species human --env true ./longairr_scripts/
+#full example (including reference download)
+bash install.sh --fetch-db TRUE --save-db ./ --species human --env true ./longairr_scripts/
 
 #short example (no reference download)
 bash install.sh
@@ -132,7 +131,7 @@ Next, navigate to the directory containing the **deinstall.sh** script and run i
 ```markdown
 conda deactivate
 
-cd path/to/longairr/
+cd path/to/LongAIRR/
 bash deinstall.sh
 ```
 This script will remove the 'longairr' conda environment. Delete the
@@ -349,7 +348,7 @@ ___
 
 **Contact**: Schuck@med.uni-frankfurt.de
 
-**Issues/Bug-report:**: [LongAIRR-Issues](https://github.com/AGImkeller/AIRR_workflow/issues)
+**Issues/Bug-report:**: [LongAIRR-Issues](https://github.com/AGImkeller/LongAIRR/issues)
 
 ___
 [**BACK TO TOP**](#Table-of-Content)

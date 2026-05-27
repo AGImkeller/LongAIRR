@@ -4,7 +4,6 @@ import argparse
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
 
-
 #================================================================#
 #
 #        Script:  longairr_rc.py
@@ -14,7 +13,7 @@ from Bio.SeqRecord import SeqRecord
 #                 failed to match the anchor/barcode sequences
 #
 #        AUTHOR:  Jonas Schuck, jschuckdev@gmail.com
-#    BUG-REPORT:  https://github.com/AGImkeller/AIRR_workflow/issues
+#    BUG-REPORT:  https://github.com/AGImkeller/LongAIRR/issues
 #
 #================================================================#
 
