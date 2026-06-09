@@ -73,7 +73,8 @@ git clone https://github.com/AGImkeller/LongAIRR.git
 ### Run install.sh
 
 Use the **install.sh** script to set up **LongAIRR**. You have the options to download
-the required databases and set up the software environment.
+the required databases and set up the software environment. Depending on available internet speed, downloading
+and installing all packages of the conda-environment might take between 5-10 minutes.
 
 Key Options:
 -  `--fetch-db TRUE`: Downloads the required IMGT/IgBlast reference database.
@@ -152,7 +153,7 @@ LongAIRR can process reads generated with the following library-protocols (see F
   * [10x Visium HD 3' - Spatial Gene Expression Vers.: CG000805 RevB](https://www.10xgenomics.com/support/spatial-gene-expression-hd-three-prime/documentation/steps/library-construction/visium-hd-3-prime-spatial-gene-expression-user-guide)
   * [SMART-Seq Human BCR (with UMIs)](https://www.takarabio.com/products/next-generation-sequencing/immune-profiling/human-repertoire/smart-seq-human-bcr-with-umis?srsltid=AfmBOoqz0SB9vJtwLHpGINeMqu9hOhdTcYTiH2PtZP4P2h7OG2y7NGmy)
 
-For detailed information regarding the file-/directory output structure, please vitis the **Example scripts** and **Output structure** section in the [**extended documentation**](#extended-documentation).
+For detailed information regarding the file-/directory output structure, please vitis the **Example Snakemake-Workflow Usage** and **Expected Output Directories** section in the [**extended documentation**](#extended-documentation).
 
 > [!Important]
 > Consider checking the related software-documentation [*`longairr --help`*] or module-specific help functions, e.g., [*`longairr collapse --help`*] to get detailed parameter information and **example-use-cases**:
@@ -265,6 +266,8 @@ Users may configure subsample size [`--n-subsample`], number of groups per chunk
 > ```
 > r1
 > CTACACGACGCTCTTCCGATCT
+> ```
+> Find example FASTA files in the subdirs `/longairr_example_workflow/required_anchors/`
 
 ___
 
@@ -280,7 +283,7 @@ The **longairr seqtag** module provides flexible anchor-based annotation of addi
 >[!Tip]
 > 1. For detailed parameter descriptions run [*`longairr seqtag --help`*]
 >
-> 2. Example of **spatial_constant.fasta** (x' -> y' orientation):
+> 2. Example of **spatial_constant.fasta**:
 > ```
 > >Ig | 1 | IGHA1
 > GCATCCCCGACCAGCCCCAAGGTCTTCCCGCTGAGCCTCTGCAGCACCCAGCCAGATGGG
@@ -294,7 +297,7 @@ The **longairr seqtag** module provides flexible anchor-based annotation of addi
 > GCCTCCACCAAGGGCCCATCGGTCTTCCCCCTGGCACCCTCCTCCAAGAGCACCTCTGGG
 > ...
 > ```
-> 2. Example of **bulk_constant.fasta** (x' -> y' orientation):
+> 2. Example of **bulk_constant.fasta**:
 > ```
 > >IGHM
 > ATGCACTCCC
@@ -308,11 +311,12 @@ The **longairr seqtag** module provides flexible anchor-based annotation of addi
 > GTGTGGAGGC
 > ```
 > Exemplary anchor sequences are custom-built and retrieved from the [IMGT](https://www.imgt.org/) reference database.
+> Find example FASTA files in the subdirs `/longairr_example_workflow/required_anchors/`
 
 ___
 
 ### (6) **longairr airr**
-The final module, **longairr airr**, performs loci-specific annotation of V(D)J and constant gene segments. User-specified IMGT germline references can be configured during LongAIRR installtion (see installation section). Furthermore users **must specify** the [`--loci ig|tr`] parameter to align the reads with the genes of either the **immunoglobulin (ig)** OR **t cell receptor (tr)** genes.
+The final module, **longairr airr**, performs loci-specific annotation of V(D)J and constant gene segments. User-specified IMGT germline references can be configured during LongAIRR installation (see installation section). Furthermore users **must specify** the [`--loci ig|tr`] parameter to align the reads with the genes of either the **immunoglobulin (ig)** OR **t cell receptor (tr)** genes.
 
 Annotated reads are transformed into tabular, AIRR-compliant outputs. Depending on the selected locus, outputs are located in the *airr* subfolder for each sample with the following naming conventions:
 
@@ -329,9 +333,13 @@ ___
 
 # Extended documentation
 
-Extended documentation including the usage of exemplary snakemake workflows for a streamlined
-processing using **LongAIRR** including information on how to use a config file to pass all runtime-parameters can be found in the `/vignettes` directory or follow: [**extended documentation**](./vignette/extended_documentation.md).
+The [**Extended documentation**](./vignette/extended_documentation.md) in the `/vignette` subdirectory includes explanations regarding Snakemake and **How to use LongAIRR with the exemplary Snakemake workflows** provided in this repository (`/longairr_example_workflow/snakemake/`)
 
+Additionally, there is an in-depth description on how to use a **config.yaml** file to pass all runtime-parameters as well as a description
+of the **expected output structure** from LongAIRR using the exemplary **Spatial LongAIRR Snakemake Workflow**.
+
+Moreover, the extended documentation contains additional information regarding external resources required for spatial datasets, including a description on **how to retrieve spatial barcode whitelists** from 
+[10x Genomics SpaceRanger](https://www.10xgenomics.com/support/software/space-ranger/latest).
 ___
 [**BACK TO TOP**](#Table-of-Content)
 ___

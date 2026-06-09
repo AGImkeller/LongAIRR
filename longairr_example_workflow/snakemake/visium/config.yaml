@@ -2,96 +2,123 @@
 ################################################################################
 #
 #   DESCRIPTION: LongAIRR config.yaml for snakemake_visium 
-#      DATASETS: 10x Visium AIRR data [Combined BCR / TCR]
+#      DATASETS: 10x Visium AIRR data [Combined BCR / TCR] for Visium V1 or
+#                Visium HD 3' datasets
 # 
-#         Usage: 
+#         Usage: See LongAIRR extended documentation
 #
 #        AUTHOR: Jonas Schuck, jschuckdev@gmail.com
-#    BUG-REPORT: https://github.com/AGImkeller/AIRR_workflow/issues
+#    BUG-REPORT: https://github.com/AGImkeller/LongAIRR/issues
+#
+#          NOTE: When providing file-paths in the `input / output directories 
+#                section, please state the **full** paths,
+#                starting with the `/home/` directory to required input / output
+#                and additional anchor files.
+#                Using `~` as an alternative for the /home/ directory or
+#                relative paths will possibly result in errors
+#
+#          NOTE: All stated file-paths are arbitrary examples and need to be set
+#                by the user to provide the actual file-paths on the local system
 #
 ################################################################################
 
 #-------------longairr filter parameters------------------#
-FILTER_MIN_QUAL: 17                  # --min-qual: default 0
-FILTER_MIN_L: 420
-FILTER_MAX_L: 6000
+FILTER_MIN_QUAL: 17                  # --min-qual:        default: -1 (no quality filtering)
+FILTER_MIN_L: 420                    # --minl:            default: -1 (no length filtering)
+FILTER_MAX_L: 6000                   # --maxl:            default: -1 (no length filtering)
 
 
 #-------------longairr collapse parameters--------------------#
-COLLAPSE_DEMUX: FALSE                 # --demux:          default True
-COLLAPSE_LIBRARY: "visiumhd"
+COLLAPSE_DEMUX: False                # --demux:          default: TRUE
+COLLAPSE_LIBRARY: "visium"           # --library:        valid: "visium" (default), "visiumhd" 
 
-COLLAPSE_WINDOW_LENGTH: 1200         # --window-length:  default 50
-COLLAPSE_ANCHOR_ERROR: 0.2           # --anchor-error:   default 0.2
-COLLAPSE_LENGTH: 12                  # --umi-length:     default 12
+COLLAPSE_WINDOW_LENGTH: 1200         # --window-length:  default: 50
+COLLAPSE_ANCHOR_ERROR: 0.2           # --anchor-error:   default: 0.2
+COLLAPSE_LENGTH: 12                  # --umi-length:     default: 12 (Visium V1 only)
 
-COLLAPSE_SPBC_ERROR: 0.0
-COLLAPSE_SPBC_FAILED: TRUE
-COLLAPSE_SPBC_LENGTH: 16
+COLLAPSE_SPBC_ERROR: 0.0             # --spbc-error:     default: 0.0
+COLLAPSE_SPBC_FAILED: True           # --spbc-failed:    default: TRUE
+COLLAPSE_SPBC_LENGTH: 16             # --spbc-length:    default: 16 (Visium V1 only)
 
-COLLAPSE_MINL: 700
-COLLAPSE_MAXL: 4000
+COLLAPSE_MINL: 700                   # --minl:           default: -1 (no length filtering)
+COLLAPSE_MAXL: 4000                  # --maxl:           default: -1 (no length filtering)
 
-COLLAPSE_AF: TRUE
-COLLAPSE_GROUP_FIELD: "UMISPBC" #or "UMI" / or "UMISPBC"
-COLLAPSE_AF_MIN_N: 5
-COLLAPSE_AF_BIN: 100
-COLLAPSE_AF_MARGIN: 0.05
+COLLAPSE_AF: True                    # --adaptive-filter: default: TRUE
+COLLAPSE_GROUP_FIELD: "SPBCUMI"          # --group-field:     valid: "UMI" or "SPBCUMI" (Visium V1) or "UMISPBC" (Visium HD 3')
+COLLAPSE_AF_MIN_N: 5                 # --filter-min-size: default: 100
+COLLAPSE_AF_BIN: 100                 # --bin-size:        default: 100
+COLLAPSE_AF_MARGIN: 0.05             # --peak-margin:     default: 0.10
 
-COLLAPSE_CONSGAP: 0.5
-COLLAPSE_CONSERROR: 0.2
+COLLAPSE_CONSGAP: 0.5                # --cons-gap:        default: 0.5
+COLLAPSE_CONSERROR: 0.2              # --cons-error:      default: 0.2
 
-COLLAPSE_N_SUBSAMPLE: 750
-COLLAPSE_N_CHUNK: 35
-COLLAPSE_SEED: 1
-COLLAPSE_JOBS: 7
+COLLAPSE_N_SUBSAMPLE: 750            # --n-subsample:     default: 10000
+COLLAPSE_N_CHUNK: 35                 # --n-per-chunk:     default: 50
+COLLAPSE_SEED: 1                     # --seed:            default: 1
+COLLAPSE_JOBS: 7                     # --cjobs:           default: 6
 
 
 #-------------longairr seqtag parameters----------------#
-SEQTAG_SPLIT: TRUE              # --split:          default False
-SEQTAG_WINDOW_LENGTH: 3000      # --window-length:  default 220
-SEQTAG_ANCHOR_ERROR: 0.1        # --anchor-error:   default 0.2
-SEQTAG_PRIMER_FIELD: "ISOTYPE"  # --pf:             default "ISOTYPE"
-SEQTAG_SPLIT_REGEX: "Ig,TCR"    # --split-regex:    default "Ig,TCR"
-SEQTAG_NPROC_ALIGN: 12
-SEQTAG_regex:                   # provide the same values as stated in LOCUS_SPLIT_REGEX
+SEQTAG_SPLIT: True                   # --split:          default: FALSE
+SEQTAG_WINDOW_LENGTH: 3000           # --window-length:  default: 220
+SEQTAG_ANCHOR_ERROR: 0.1             # --anchor-error:   default: 0.1
+SEQTAG_PRIMER_FIELD: "ISOTYPE"       # --pf:             default: "ISOTYPE"
+SEQTAG_SPLIT_REGEX: "Ig,TCR"         # --split-regex:    default: "Ig,TCR"
+SEQTAG_NPROC_ALIGN: 12               # deprecated, do not change
+SEQTAG_regex:                        # provide the same values as stated in LOCUS_SPLIT_REGEX as a list // snakemake-specific
      - "Ig"
      - "TCR"
 
 
 #-------------longairr airr parameters--------------------#
-AIRR_PH: TRUE                  # --ph:  default True
-locus_igblast:
-    - "ig"    # loci to run longairr airr on; --loci: default ig
-    - "tr"    # t cell receptor
+AIRR_PH: True                        # --ph:             default: TRUE
+locus_igblast:                       # --loci            default: ig // provide both loci as shown below if combined BCR + TCR
+    - "ig"    # ig: b cell receptor locus
+    - "tr"    # tr: t cell receptor locus
 
 
 #-------------input / output directories------------------#
+
+################################################################################
+# !!!NOTE: When providing file-paths in the `input / output directories 
+#                section, please state the **full** paths,
+#                starting with the `/home/` directory to required input / output
+#                and additional anchor files.
+#                Using `~` as an alternative for the /home/ directory or
+#                relative paths will possibly result in errors
+#
+# !!!NOTE: All stated file-paths are arbitrary examples and need to be set
+#                by the user to provide the actual file-paths on the local system
+################################################################################
+
 #filter
-INPUT_FASTQ: "/home/jonas/mnt_AG_Imkeller/group_members/schuck/immcantation_analysis/visium_hd/longairr_sp21hd/basecalling/simplex_duplex.fastq"     # input_fastq
+INPUT_FASTQ: "/home/user123/sampleX/longairr_results/basecalling/simplex_duplex.fastq"     # input_fastq // output from longairr basecall
 
 #collapse
-COLLAPSE_ANCHOR_FASTA: "/home/jonas/Desktop/Airr_workflow/repo/nanoairr_inputs/illumina_r1.fasta"            # anchor_seq_input
-#VISIUM_SPBCS_TXT: "/home/jonas/Desktop/Airr_workflow/repo/nanoairr_inputs/visium-v1_coordinates.txt"    # valid_sp_barcodes.txt
+COLLAPSE_ANCHOR_FASTA: "/home/user123/path/to/LongAIRR/longairr_example_workflow/example_inputs/required_anchors/spatial_visium/r1_anchor.fasta"            # UMI-SPBC anchor_seq_input
 
-VISIUMHD_SPBC1_TXT: "/home/jonas/Desktop/Airr_workflow/repo/nanoairr_inputs/visium_hd_v1_bc1.txt"
-VISIUMHD_SPBC2_TXT: "/home/jonas/Desktop/Airr_workflow/repo/nanoairr_inputs/visium_hd_v1_bc2.txt"
+# NOTE: Use this for Visium V1 datasets // remove the `#` in the beginning of the line
+VISIUM_SPBCS_TXT: "/home/user123/path/to/visium-v1_coordinates.txt"    # SPBC whitelist file (!from 10x Genomics SpaceRanger!)
+
+# NOTE: Use these for Visium HD 3' datasets // remove the `#` in the beginning of the line
+#VISIUMHD_SPBC1_TXT: "/home/jonas/Desktop/Airr_workflow/repo/nanoairr_inputs/visium_hd_v1_bc1.txt"
+#VISIUMHD_SPBC2_TXT: "/home/jonas/Desktop/Airr_workflow/repo/nanoairr_inputs/visium_hd_v1_bc2.txt"
 
 #seqtag
-SEQTAG_FASTA: "/home/jonas/Desktop/Airr_workflow/repo/nanoairr_inputs/new_general_constant_3.fasta"  # isotype_seqs_input
+SEQTAG_FASTA: "/home/user123/path/to/LongAIRR/longairr_example_workflow/example_inputs/required_anchors/spatial_visium/constant_chain_anchors.fasta"         # isotype_seqs_input
 
 #airr
-DATABASES_PARENT: "/home/jonas/Desktop/Airr_workflow/repo/nanoairr_1.5/databases/"    # parent containing inputdir_igblast and inputdir_germlines
+DATABASES_PARENT: "/home/user123/path/to/databases/"    # parent directory containing inputdir_igblast and inputdir_germlines (set up during longAIRR installation)
 
 #output directory
-OUTPUT: "/home/jonas/hd_out/sd17/"     # outdir
+OUTPUT: "/home/user123/path/to/longairr_results/"       # outdir
 
 
 #-------------------------misc---------------------------#
 #Specify 'True' if you want to copy the used config.yaml to generate the output data into the 'OUTPUT' directory
-COPY_CONFIG: True
+COPY_CONFIG: True         # snakemake specific
 
 # path to used config.yaml
-CONFIG_PATH: "/home/jonas/Desktop/Airr_workflow/repo/nanoairr/longairr_example_workflow/snakemake/visium/config.yaml"
+CONFIG_PATH: "/home/user123/path/to/LongAIRR/longairr_example_workflow/snakemake/visium/config.yaml"
 
 

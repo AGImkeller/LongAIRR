@@ -12,12 +12,14 @@ advanced use-cases.
 ## Table of Content
 
 * [Compatible Library Preparation Protocols](#compatible-library-preparation-protocols)
+* [Retrieving 10x Genomics Spatial Barcode Whitelists](#retrieving-10x-genomics-spatial-barcode-whitelists)
+  * [Visium V1 Whitelist](#visium-v1-spbc-whitelist)
 * [LongAIRR Snakemake Example Workflows](#longairr-snakemake-example-workflows)
   * [Snakemake Background](#background)
   * [Spatial LongAIRR Snakemake Workflow](#spatial-longairr-snakemake-workflow)
     * [Parameter Overview](#parameter-overview)
-    * [Workflow usage](#usage)
-    * [Output Directories](#output-directories)
+    * [Example Snakemake-Workflow Usage](#snakemake-workflow-usage)
+    * [Expected Output Directories](#expected-output-directories)
 * [Used External Software](#used-external-software)
 * [Citation](#citation)
 * [Authors / Contact](#authors)
@@ -29,6 +31,21 @@ ___
   * [**SPATIAL**] [10x Visium V1 - Spatial Gene Expression Vers.: CG000239 RevF](https://www.10xgenomics.com/support/spatial-gene-expression-fresh-frozen/documentation/steps/library-construction/visium-spatial-gene-expression-reagent-kits-user-guide)
   * [**SPATIAL**] [10x Visium HD 3' - Spatial Gene Expression Vers.: CG000805 RevB](https://www.10xgenomics.com/support/spatial-gene-expression-hd-three-prime/documentation/steps/library-construction/visium-hd-3-prime-spatial-gene-expression-user-guide)
   * [**BULK**] [SMART-Seq Human BCR (with UMIs)](https://www.takarabio.com/products/next-generation-sequencing/immune-profiling/human-repertoire/smart-seq-human-bcr-with-umis?srsltid=AfmBOoqz0SB9vJtwLHpGINeMqu9hOhdTcYTiH2PtZP4P2h7OG2y7NGmy)
+
+___
+
+## Retrieving 10x Genomics Spatial Barcode Whitelists
+
+### Visium V1 SPBC Whitelist
+
+Spatial barcode whitelists for **Visium V1 datasets** are licensed by 10x Genomics and can be obtained from [10x Genomics SpaceRanger](https://www.10xgenomics.com/support/software/space-ranger/latest) upon agreement to their terms and installing SpaceRanger locally.
+
+SPBC-whitelists can be found in the SpaceRanger *subdirectories* after local installation, e.g., `/path/to/cellranger/barcodes/`. (named cellranger on purpose!)
+Expected filename for Visium V1 SPBC-whitelist is **visium-v1_coordinates.txt**
+
+Follow the installation instructions provided in the [10x Genomics SpaceRanger Documentation](https://www.10xgenomics.com/support/software/space-ranger/latest) 
+
+___
 
 ## LongAIRR Snakemake Example Workflows
 
@@ -54,40 +71,46 @@ Each workflow includes one **snakefile**, containing rules for step-wise data-pr
 
 #### Parameter Overview
 
-Essential parameters that need to be provided by the user:
+Essential **parameters** and **required additional files** that need to be provided by the user in the **config.yaml**; Exemplary for the spatial LongAIRR Snakemake Workflow for Visium V1 and Visium HD 3' datasets:
+
+> * Visium V1 / Visium HD 3' LongAIRR Snakemake Workflow: `/longairr_example_workflow/snakemake/visium/`
+
 
  ***Input / Output***
- * `INPUT_FASTQ`, path to input FASTQ files. **ONT**: *longairr basecall* output: simplex.fastq, simplex_duplex.fastq or duplex.fastq or custom naming. **PacBio** fastq files.
- * `COLLAPSE_ANCHOR_FASTA`, path to fasta file containing anchor sequences to determine UMI and spatial barcode sequence sequences. Refer to [Module description: *longairr collapse*](../README.md)
- * `VISIUM_SPBC_TXT`, spatial barcode whitelist containing the nucleotide sequences for **Visium V1** datasets. Same scheme for **Visium HD 3'** datasets, providing two lists `VISIUMHD_SPBC1_TXT` and `VISIUMHD_SPBC2_TXT` that contain the corresponding nucleotide sequences from the spatial barcodes in the Visium HD 3' technology.
- * `SEQTAG_FASTA`, path to fasta file containing anchor sequences e.g., for constant segment annotation / splitting sequences by BCR and TCR locus. Headers of the provided sequences should match (partially) with values provided in `SEQTAG_SPLIT_REGEX` (see below)
- * `DATABASE_PARENT`, path to parent directory containing reference databases. If the references where set up during LongAIRR installation, providing the `path/to/databases/` path is sufficient. The workflow looks for `/igblast` and `/germlines/imgt/humand/vdj/` subdirectories within the provided parent. Check the [**Installation and Setup section**](../README.md) to revisit setting up the references during LongAIRR installation 
- * `OUTPUT`, path to desired output directory. If basecalling was performed with *longairr basecall*, state the directory that contains basecalling output.
- * `CONFIG_PATH` path to used snakemake **config.yaml** if `COPY_CONFIG: TRUE` was specified, which then copies the **config.yaml** in the stated `OUTPUT` directory. This allows revisting the used parameters for every processed dataset.
+ * **`INPUT_FASTQ`**, path to input FASTQ files. **ONT**: *longairr basecall* output: simplex.fastq, simplex_duplex.fastq or duplex.fastq or custom naming. **PacBio** fastq files.
+ * **`COLLAPSE_ANCHOR_FASTA`**, path to fasta file containing anchor sequences to determine UMI and spatial barcode sequences. Refer to [Module description: *longairr collapse*](../README.md). Find an exemplary FASTA file containing the R1-barcode sequence in the following subdirectories: `/longairr_example_workflow/example_inputs/required_anchors/`, **filename**: `r1_anchor.fasta`
+ * **`VISIUM_SPBC_TXT`**, spatial barcode whitelist containing the nucleotide sequences for **Visium V1** datasets. Same scheme for **Visium HD 3'** datasets, providing two lists `VISIUMHD_SPBC1_TXT` and `VISIUMHD_SPBC2_TXT` that contain the corresponding nucleotide sequences from the spatial barcodes in the Visium HD 3' technology. **See information in the text box below about where to retrieve required SPBC-whitelists for Visium V1 datasets.**
+ * **`SEQTAG_FASTA`**, path to fasta file containing anchor sequences e.g., for constant segment annotation / splitting sequences by BCR and TCR locus. Headers of the provided sequences should match (partially) with values provided in **`SEQTAG_SPLIT_REGEX`** (see in the parameter-list below). Find an exemplary FASTA file containing anchor sequences for constant segments of the following adaptive immune cell receptor chains `IGHA, IGHG, IGHM, IGHD, IGHE, IGKC, IGLC, TRAC and TRBC` in the subdirectories: `/longairr_example_workflow/example_inputs/required_anchors/`, **filename**: `constant_chain_anchors.fasta`
+ * **`DATABASE_PARENT`**, path to parent directory containing reference databases. If the references where set up during LongAIRR installation, providing the `path/to/databases/` path is sufficient. The workflow looks for `/igblast` and `/germlines/imgt/human/vdj/` subdirectories within the provided `databases/` parent-directory. Check the [**Installation and Setup section**](../README.md) to revisit setting up the AIRR reference-databases during LongAIRR installation.
+ * **`OUTPUT`**, path to desired output directory. If basecalling was performed with *longairr basecall*, state the directory that contains basecalling output.
+ * **`CONFIG_PATH`** path to used snakemake **config.yaml**. If **`COPY_CONFIG: TRUE`** is specified, the **config.yaml** will be copied in the stated **`OUTPUT`** directory. This allows revisiting the used parameters for every processed dataset.
+
+> [!Important]
+> Spatial barcode whitelists for **Visium V1 datasets** can be possibly retrieved from [10x Genomics SpaceRanger](https://www.10xgenomics.com/support/software/space-ranger/latest) upon agreement to their terms and installing SpaceRanger locally. See [section above](#retrieving-10x-genomics-spatial-barcode-whitelists)
 
  ***Initial quality and length filtering***
- * [**Filter parameters**]: `FILTER_MIN_QUAL`, `FILTER_MIN_L`, `FILTER_MAX_L`, for inital quality and fixed length filtering. Set length filters to `-1` if not desired.
+ * [**Filter parameters**]: **`FILTER_MIN_QUAL`**, **`FILTER_MIN_L`**, **`FILTER_MAX_L`**, for inital quality and fixed length filtering. Set length filters to `-1` if not desired.
 
  ***Sequence library and Sequence groups***
  * **`COLLAPSE_LIBRARY`**: Valid values are `"visium"` and `"visiumhd"` corresponding to the used spatial [library protocol](#compatible-library-preparation-protocols)
- * **`COLLAPSE_GROUP_FIELD`**: Valid values are `"SPBCUMI"` for **Visium V1** based datasets, and `"UMISPBC"` for **Visium HD 3'** based datasets. This logic corresponds to the underlying arrangement of UMI and SPBC segments within the respective library-specific read-structures.
+ * **`COLLAPSE_GROUP_FIELD`**: Valid values are `"SPBCUMI"` / '`UMi` for **Visium V1** based datasets, and `"UMISPBC"` for **Visium HD 3'** based datasets. This logic corresponds to the underlying arrangement of UMI and SPBC segments within the respective library-specific read-structures.
 
  ***Adaptive filtering***
- * `COLLAPSE_AF = TRUE | FALSE` to toggle adaptive filtering, `COLLAPSE_AF_MIN_N`, to specify the minimal sequence group size to perform adaptive filtering on (default (5)). `COLLAPSE_AF_BIN`, and `COLLAPSE_AF_MARGIN`, to specify bin size and margin around the determined peak-length to retain within this range.
+ * **`COLLAPSE_AF = TRUE | FALSE`** to toggle adaptive filtering, **`COLLAPSE_AF_MIN_N`**, to specify the minimal sequence group size to perform adaptive filtering on (default (5)). **`COLLAPSE_AF_BIN`**, and **`COLLAPSE_AF_MARGIN`**, to specify bin size and margin around the determined peak-length to retain within this range.
  
  ***Split Sequences by Locus (BCR / TCR)***
- * `SEQTAG_SPLIT_REGEX`, values provided here in a list need to match e.g., with the identifiers of provided anchor sequences in the `SEQTAG_FASTA` input file. `SEQTAG_regex` needs to match these values, split into separate lines. Internal parameter to determine file-naming by Snakemake rules.
- * `locus_igblast`, valid values are `"ig"` and/or `"tr"` passed to igblast. Provide both, seperated into new lines if have a **combined BCR / TCR library** and split sequences by locus.
+ * **`SEQTAG_SPLIT_REGEX`**, values provided here in a list need to match e.g., with the identifiers of provided anchor sequences in the **`SEQTAG_FASTA`** input file. **`SEQTAG_regex`** needs to match these values, split into separate lines. Internal parameter to determine file-naming by Snakemake rules.
+ * **`locus_igblast`**, valid values are `"ig"` and/or `"tr"` passed to igblast. Provide both, seperated into new lines if have a **combined BCR / TCR library** and split sequences by locus.
  
  ***Performance / Speed***
- * `COLLAPSE_N_SUBSAMPLE` determines the maximal number of reads to keep for every sequence group. Sequence groups containing more reads will be subsamples with the specified random seed `COLLAPSE_SEED`.
- * `COLLAPSE_N_CHUNK` determines the number of sequence groups chunked into separate files. Number of reads across chunks will be overall similar. Specify the number of chunks that are processed in parallel during multiple sequence alignment and consensus building.
+ * **`COLLAPSE_N_SUBSAMPLE`** determines the maximal number of reads to keep for every sequence group. Sequence groups containing more reads will be subsamples with the specified random seed **`COLLAPSE_SEED`**.
+ * **`COLLAPSE_N_CHUNK`** determines the number of sequence groups chunked into separate files. Number of reads across chunks will be overall similar. Specify the number of chunks that are processed in parallel during multiple sequence alignment and consensus building.
 
 <br>
 
 ___
 
-#### Usage
+#### Snakemake Workflow Usage
 
 Follow the steps below to run the snakemake workflows from the command line:
 
@@ -109,13 +132,11 @@ This will run the snakemake workflow and save the results in the directory state
 
 ___
 
-#### Output Directories
+#### Expected Output Directories
 
-The following results were generated with the `snakemake/visium/snakefile_visium_hd` example workflow. The used config file was copied in the `OUTPUT` directory
+The following results were generated with the `/longairr_example_workflow/snakemake/visium/snakefile_visium_hd` example workflow. The used config file was copied in the `OUTPUT` directory
 
 <img align="right" src="./figures/spatial_output_tree.png" width="300" alt="image" />
-
-**TODO change the text here**
 
 The output structure of a **spatial** sample can be observed on the right. In this case, **longairr demux** was not performed,
 however the sample includes receptor data from the immunoglobulin ('ig') and tcr ('tr') locus, which is why the output from **longairr seqtag** and **airr_split** directories 
