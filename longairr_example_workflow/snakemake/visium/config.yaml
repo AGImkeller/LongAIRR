@@ -100,9 +100,10 @@ COLLAPSE_ANCHOR_FASTA: "/home/user123/path/to/LongAIRR/longairr_example_workflow
 # NOTE: Use this for Visium V1 datasets // remove the `#` in the beginning of the line
 VISIUM_SPBCS_TXT: "/home/user123/path/to/visium-v1_coordinates.txt"    # SPBC whitelist file (!from 10x Genomics SpaceRanger!)
 
-# NOTE: Use these for Visium HD 3' datasets // remove the `#` in the beginning of the line
-#VISIUMHD_SPBC1_TXT: "/home/jonas/Desktop/Airr_workflow/repo/nanoairr_inputs/visium_hd_v1_bc1.txt"
-#VISIUMHD_SPBC2_TXT: "/home/jonas/Desktop/Airr_workflow/repo/nanoairr_inputs/visium_hd_v1_bc2.txt"
+# NOTE: Use these for Visium HD 3' datasets
+# remove the `#` in the beginning of the line
+#VISIUMHD_SPBC1_TXT: "/home/user123/path/to/visium_hd_v1_bc1.txt"
+#VISIUMHD_SPBC2_TXT: "/home/user123/path/to/visium_hd_v1_bc2.txt"
 
 #seqtag
 SEQTAG_FASTA: "/home/user123/path/to/LongAIRR/longairr_example_workflow/example_inputs/required_anchors/spatial_visium/constant_chain_anchors.fasta"         # isotype_seqs_input

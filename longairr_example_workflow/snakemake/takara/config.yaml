@@ -91,7 +91,7 @@ AIRR_LOCUS: "ig"                 # --loci            default: ig // ig: b cell r
 INPUT_DUPLEX_FASTQ: "/home/user123/sampleX/longairr_results/runY/basecalling/simplex_duplex.fastq"    # input_fastq // output from longairr basecall
 
 #demux
-DEMUX_UID_FASTA: "/home/user123/path/to/LongAIRR/longairr_example_workflow/example_inputs/required_anchors/bulk_takara/UDI_barcode_runX.fasta"        # demux UDI barcodes_input
+DEMUX_UID_FASTA: "/home/user123/path/to/LongAIRR/longairr_example_workflow/example_inputs/required_anchors/bulk_takara/UDI_barcode_rX.fasta"        # demux UDI barcodes_input
 
 #collapse
 COLLAPSE_ANCHOR_FASTA: "/home/user123/path/to/LongAIRR/longairr_example_workflow/example_inputs/required_anchors/bulk_takara/UMI_anchor.fasta"           # UMI anchor_seq_input
