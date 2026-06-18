@@ -41,10 +41,10 @@ ___
 
 Spatial barcode whitelists for **Visium V1 datasets** are licensed by 10x Genomics and can be obtained from [10x Genomics SpaceRanger](https://www.10xgenomics.com/support/software/space-ranger/latest) upon agreement to their terms and installing SpaceRanger locally.
 
-SPBC-whitelists can be found in the SpaceRanger *subdirectories* after local installation, e.g., `/path/to/cellranger/barcodes/`. (named cellranger on purpose!)
+SPBC-whitelists can be found in the SpaceRanger *subdirectories* after local installation. Follow this Link to the official documentation from **10x Genomics**: ["Where can I find the SpaceRanger barcode whitelist.."](https://kb.10xgenomics.com/s/article/360041426992-Where-can-I-find-the-Space-Ranger-barcode-inclusion-list-formerly-barcode-whitelist-and-their-coordinates-on-the-slide)
 Expected filename for Visium V1 SPBC-whitelist is **visium-v1_coordinates.txt**
 
-Follow the installation instructions provided in the [10x Genomics SpaceRanger Documentation](https://www.10xgenomics.com/support/software/space-ranger/latest) 
+Follow the installation instructions for **SpaceRanger** provided in the [10x Genomics SpaceRanger Documentation](https://www.10xgenomics.com/support/software/space-ranger/latest) 
 
 ___
 
