@@ -4,13 +4,40 @@ configfile: "config.yaml"
 locus_mapping = list(zip(config["SEQTAG_regex"], config["locus_igblast"]))
 copy_config = config["COPY_CONFIG"]
 
+#def collapse_extra_args(config):
+#    library = config["COLLAPSE_LIBRARY"]
+#
+#    if library == "visium":
+#        return f"--visium-spbc {config['VISIUM_SPBCS_TXT']}"
+#    elif library == "visiumhd":
+#        return f"--hd-spbc1 {config['VISIUMHD_SPBC1_TXT']} --hd-spbc2 {config['VISIUMHD_SPBC2_TXT']}"
+#    elif library == "bulk":
+#        return ""
+#    else:
+#        raise ValueError(f"Unsupported COLLAPSE_LIBRARY: {library}")
+    
+
 def collapse_extra_args(config):
     library = config["COLLAPSE_LIBRARY"]
 
     if library == "visium":
         return f"--visium-spbc {config['VISIUM_SPBCS_TXT']}"
     elif library == "visiumhd":
-        return f"--hd-spbc1 {config['VISIUMHD_SPBC1_TXT']} --hd-spbc2 {config['VISIUMHD_SPBC2_TXT']}"
+        hd_index = config.get("VISIUMHD_SPBC_INDEX", "")
+
+        if hd_index:
+            return f"--hd-spbc-index {hd_index}"
+
+        bc1 = config.get("VISIUMHD_SPBC1_TXT", "")
+        bc2 = config.get("VISIUMHD_SPBC2_TXT", "")
+
+        if bc1 and bc2:
+            return f"--hd-spbc1 {bc1} --hd-spbc2 {bc2}"
+
+        raise ValueError(
+            "COLLAPSE_LIBRARY is 'visiumhd', but neither VISIUMHD_SPBC_INDEX "
+            "nor both VISIUMHD_SPBC1_TXT/VISIUMHD_SPBC2_TXT were provided."
+        )
     elif library == "bulk":
         return ""
     else:

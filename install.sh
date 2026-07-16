@@ -230,6 +230,16 @@ fi
 
 #==============================Create conda env================================#
 
+env_exists() {
+  local env_name="$1"
+  conda env list | awk '{print $1}' | grep -qx "${env_name}"
+}
+
+get_env_path() {
+  local env_name="$1"
+  conda env list | awk -v env="${env_name}" '$1 == env {print $NF; exit}'
+}
+
 if [[ "${env_bin}" == "TRUE" ]]; then
 
   # Define the environment name and necessary paths
@@ -244,7 +254,7 @@ if [[ "${env_bin}" == "TRUE" ]]; then
   fi
 
   # Create the Conda environment if it does not exist yet
-  if ! conda env list | grep -q "^${env_name}"; then
+  if ! env_exists "^${env_name}"; then
     mamba env create -f "$(dirname "$0")/environment.yml" || { echo "Failed to create conda environment"; exit 1; }
   else
     echo "Conda environment \"${env_name}\" already exists."
@@ -252,7 +262,8 @@ if [[ "${env_bin}" == "TRUE" ]]; then
 
   mkdir -p "${bin_dir}"
 
-  conda_env_path=$(conda env list | grep "^${env_name} " | awk '{print $2}')
+  #conda_env_path=$(conda env list | grep "^${env_name} " | awk '{print $2}')
+  conda_env_path="$(get_env_path "${env_name}")"
   env_bin="${conda_env_path}/bin/"
 
   # Ensure Conda environment exists

@@ -1046,6 +1046,7 @@ collapse() {
   local spbc_file
   local bc1_file
   local bc2_file
+  local longairr_whitelist_index
 
   local demux="TRUE"
   local library="visium"
@@ -1197,6 +1198,10 @@ collapse() {
         bc2_file="$2"
         shift 2
         ;;
+      --hd-spbc-index)
+        longairr_whitelist_index="$2"
+        shift 2
+        ;;
       *) 
         if [[ -z "${input_anchor}" ]]; then
           input_anchor="$1"
@@ -1289,14 +1294,14 @@ collapse() {
     elif [[ "${library}" == "visium" ]]; then
       group_field="SPBCUMI"
     elif [[ "${library}" == "visiumhd" ]]; then
-      group_field="UMISPBC"
+      group_field="UMISPBCID"
     fi
   fi
 
   # validate allowed group_field values
-  if [[ "${group_field}" != "UMI" && "${group_field}" != "SPBCUMI" && "${group_field}" != "UMISPBC" ]]; then
+  if [[ "${group_field}" != "UMI" && "${group_field}" != "SPBCUMI" && "${group_field}" != "UMISPBCID" ]]; then
     log_message "ERROR" "longairr collapse" \
-      "Invalid --group-field '${group_field}'. Allowed values are 'UMI', 'SPBCUMI', or 'UMISPBC'." \
+      "Invalid --group-field '${group_field}'. Allowed values are 'UMI', 'SPBCUMI', or 'UMISPBCID'." \
       "${log_file}"
     exit 1
   fi
@@ -1319,9 +1324,9 @@ collapse() {
     fi
 
   elif [[ "${library}" == "visiumhd" ]]; then
-    if [[ "${group_field}" != "UMI" && "${group_field}" != "UMISPBC" ]]; then
+    if [[ "${group_field}" != "UMI" && "${group_field}" != "UMISPBCID" ]]; then
       log_message "ERROR" "longairr collapse" \
-        "--group-field '${group_field}' is not valid for visiumhd mode. Allowed values are 'UMI' or 'UMISPBC'." \
+        "--group-field '${group_field}' is not valid for visiumhd mode. Allowed values are 'UMI' or 'UMISPBCID'." \
         "${log_file}"
       exit 1
     fi
@@ -1342,28 +1347,37 @@ collapse() {
       exit 1
     fi
 
+  #elif [[ "${library}" == "visiumhd" ]]; then
+  #  if [[ -z "${bc1_file}" || -z "${bc2_file}" || -z "${longairr_whitelist_index}" ]]; then
+  #    log_message "ERROR" "longairr collapse" \
+  #      "Please provide either --hd-index with a LongAIRR_whitelist index or --hd-spbc1 and --hd-spbc2 when using visiumhd mode." \
+  #      "${log_file}"
+  #    exit 1
+  #  fi
+
   elif [[ "${library}" == "visiumhd" ]]; then
-    if [[ -z "${bc1_file}" || -z "${bc2_file}" ]]; then
+    if [[ -z "${longairr_whitelist_index}" && ( -z "${bc1_file}" || -z "${bc2_file}" ) ]]; then
       log_message "ERROR" "longairr collapse" \
-        "--hd-spbc1 and --hd-spbc2 are required in visiumhd mode." \
-        "${log_file}"
-      exit 1
-    fi
-
-    if [[ ! -f "${bc1_file}" ]]; then
-      log_message "ERROR" "longairr collapse" \
-        "Specified BC1 whitelist file does not exist." \
-        "${log_file}"
-      exit 1
-    fi
-
-    if [[ ! -f "${bc2_file}" ]]; then
-      log_message "ERROR" "longairr collapse" \
-        "Specified BC2 whitelist file does not exist." \
+        "Please provide either --hd-index with a LongAIRR_whitelist index or both --hd-spbc1 and --hd-spbc2 when using visiumhd mode." \
         "${log_file}"
       exit 1
     fi
   fi
+
+    #if [[ ! -f "${bc1_file}" ]]; then
+    #  log_message "ERROR" "longairr collapse" \
+    #    "Specified BC1 whitelist file does not exist." \
+    #    "${log_file}"
+    #  exit 1
+    #fi
+
+    #if [[ ! -f "${bc2_file}" ]]; then
+    #  log_message "ERROR" "longairr collapse" \
+    #    "Specified BC2 whitelist file does not exist." \
+    #    "${log_file}"
+    #  exit 1
+    #fi
+  #fi
 
   #--------FUNCTIONALITY-------#
 
@@ -1447,7 +1461,14 @@ collapse() {
 
     else # visiumhd
 
-      longairr_spbc_umi_main.py --spatial_mode visiumhd --input "${barcode_combined}" --output "${trim_out}" --bc1_file "${bc1_file}" --bc2_file "${bc2_file}" --failed "${spbc_failed_out}" \
+      #longairr_spbc_umi_main.py --spatial_mode visiumhd --input "${barcode_combined}" --output "${trim_out}" --bc1_file "${bc1_file}" --bc2_file "${bc2_file}" --failed "${spbc_failed_out}" \
+      #  --cut "${spbc_cut}" --hd_umi_base_length 9 --hd_offsets 0,1,2 --hd_bins 002um >> "${log_file}" 2>&1 || {
+      #  log_message "ERROR" "longairr collapse" \
+      #    "longairr_spbc_umi visiumhd failed." \
+      #    "${log_file}"
+      #  exit 1
+      #}
+      longairr_spbc_umi_main.py --spatial_mode visiumhd --input "${barcode_combined}" --output "${trim_out}" --spbc_index "${longairr_whitelist_index}" --failed "${spbc_failed_out}" \
         --cut "${spbc_cut}" --hd_umi_base_length 9 --hd_offsets 0,1,2 --hd_bins 002um >> "${log_file}" 2>&1 || {
         log_message "ERROR" "longairr collapse" \
           "longairr_spbc_umi visiumhd failed." \
@@ -1546,14 +1567,21 @@ collapse() {
       exit 1
       }
       update_progress ${current_step} ${umi_steps}
-    else
+    else #visium hd
       # Build consensus sequence per specified group-field (UMI / SPBCUMI) (on aligned chunks, combined file)
-      BuildConsensus.py -n ${n_cons} -s "${tmp_group}/3_groups_aligned_combined_dedup.fasta" --bf ${group_field} --cf N_ORIG N_KEEP UMI BC1 BC2 X Y SPBC10X --act majority majority majority majority majority majority majority majority --pf SPBC --maxgap ${cons_gap} --maxerror ${cons_error} --outname groups_msa --outdir "${tmp_group}" >> "${log_file}" 2>&1 || {
+      #BuildConsensus.py -n ${n_cons} -s "${tmp_group}/3_groups_aligned_combined_dedup.fasta" --bf ${group_field} --cf N_ORIG N_KEEP UMI BC1 BC2 X Y SPBC10X --act majority majority majority majority majority majority majority majority --pf SPBC --maxgap ${cons_gap} --maxerror ${cons_error} --outname groups_msa --outdir "${tmp_group}" >> "${log_file}" 2>&1 || {
+      #  log_message "ERROR" "longairr collapse" \
+      #    "BuildConsensus spatial failed." \
+      #    "${log_file}"
+      #  exit 1
+      #}
+      BuildConsensus.py -n ${n_cons} -s "${tmp_group}/3_groups_aligned_combined_dedup.fasta" --bf ${group_field} --cf N_ORIG N_KEEP UMISPBC UMI SPBC SPBCID X Y  --act majority majority majority majority majority majority majority majority --pf SPBC --maxgap ${cons_gap} --maxerror ${cons_error} --outname groups_msa --outdir "${tmp_group}" >> "${log_file}" 2>&1 || {
         log_message "ERROR" "longairr collapse" \
           "BuildConsensus spatial failed." \
           "${log_file}"
         exit 1
       }
+
       update_progress ${current_step} ${umi_steps}
       # Write consensus info (GROUP + CONSCOUNT + N_ORIG + N_KEEP+ UMI + SPBC + PRCOUNT) into sequence header (+ enumerate seqs with unique ID)
       # NOTE longairr_header_metadata.py is an internal script saved in 'longairr_scripts/'

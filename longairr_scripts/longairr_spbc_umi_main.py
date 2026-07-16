@@ -2,7 +2,8 @@
 
 import argparse
 import itertools
-import gzip
+import re
+import sqlite3
 from Bio import SeqIO
 from Bio.Seq import Seq
 
@@ -13,7 +14,7 @@ from Bio.Seq import Seq
 #
 #   DESCRIPTION:  Annotates spatial barcode / UMI information in anchor-cut reads.
 #
-#                 Supports two spatial modes:
+#                 Supports Visium V1 and two Visium HD 3' implementations:
 #
 #                 1) visium
 #                    - fixed SPBC length (default 16 nt)
@@ -22,13 +23,23 @@ from Bio.Seq import Seq
 #                    - exact match or optional mismatch-based correction
 #                    - Sequence header slots: SPBC, UMI, SPBCUMI
 #
-#                 2) visium_hd
+#                 2) visium_hd using spbc-whitelist from longairr_whitelist
+#                    - exact matching only
+#                    - spbc-index generated from 10x SpaceRanger using longairr_whitelist
+#                    - UMI length of 9
+#                    - tries offsets 0/1/2 for best spbc-match observed in whitelist
+#                    - offset nt are not included in emitted UMI
+#                    - Sequence header slots: UMI,  SPBC, SPBCID, UMISPBC, UMISPBCID, X, Y
+#                    - runs in case index is provided
+#
+#                 3) [DEPRECATED] visium_hd with true spbc-whitelist
 #                    - exact matching only
 #                    - BC1 and BC2 information from 10x Genomics
 #                    - Base UMI length of 9
 #                    - tries offsets 0/1/2
 #                    - offset nt are included in emitted UMI
 #                    - Sequence header slots: UMI, BC1, BC2, SPBC, UMISPBC, X, Y, SPBC10X
+#                    - runs in case BC1 and BC2 files are provided
 #
 #                  Script can return reads that dont map to any
 #                  valid SPBC using the --failed flag. UMI and SPBC sequence segments
@@ -237,6 +248,7 @@ class VisiumDecoder:
         }
 
 # ----------------------------- Visium HD 3'------------------------------------
+#                               +++++2+++++
 
 # Load Visium HD 3' SPBC whitelists for Bc1 and Bc2
 def load_sequence_list(file_path):
@@ -249,7 +261,194 @@ def load_sequence_list(file_path):
     return seqs
 
 
-# Annotation of UMI and SPBC (Bc1 + Bc2) in Visium HD 3' long reads
+SPBC_ID_RE = re.compile(r"^s_([^_]+)_([0-9]+)_([0-9]+)-1$")
+
+# Parse a Visium HD 10x SPBC ID to extract coordinates (e.g. s_002um_02077_01449-1)
+def parse_spbc_id(spbc_id):
+    m = SPBC_ID_RE.match(spbc_id)
+    if not m:
+        return None, None
+    return int(m.group(2)), int(m.group(3))
+
+# only parse spbc from the whitelist that have certain lengths (default: auto, includes all lengths)
+def parse_optional_lengths(value):
+    if value is None:
+        return None
+    value = str(value).strip().lower()
+    if value in ("", "auto"):
+        return None
+    try:
+        lengths = tuple(sorted(set(int(x) for x in value.split(",") if x.strip() != "")))
+    except ValueError:
+        raise ValueError("--hd_spbc_lengths must be 'auto' or a comma-separated list of integers, e.g. 29,30,31")
+    return lengths
+
+
+# Load spbc index created from LongAIRR_whitelist // creates lookup dictionary
+# raw_spbc : metadata, with metadata being spbc_id, x, y, and a tuple of spbc_len to test a window on
+def load_visium_hd_sqlite_index(sqlite_path, candidate_lengths=None):
+    
+    conn = sqlite3.connect(f"file:{sqlite_path}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+
+    try:
+        table_exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'spbc_lookup'"
+        ).fetchone()
+        if table_exists is None:
+            raise ValueError(f"SQLite index does not contain required table 'spbc_lookup': {sqlite_path}")
+
+        where = ""
+        params = []
+        if candidate_lengths is not None:
+            placeholders = ",".join("?" for _ in candidate_lengths)
+            where = f"WHERE raw_spbc_len IN ({placeholders})"
+            params = list(candidate_lengths)
+
+        rows = conn.execute(
+            f"""
+            SELECT raw_spbc, spbc_id, x, y, raw_spbc_len, read_count
+            FROM spbc_lookup
+            {where}
+            """,
+            params,
+        ).fetchall()
+
+        lookup = {}
+        observed_lengths = set()
+        for row in rows:
+            raw_spbc = row["raw_spbc"].upper()
+            spbc_id = row["spbc_id"]
+            x = row["x"]
+            y = row["y"]
+
+            # Fall back to parsing x/y from the corrected 10x ID if needed.
+            if x is None or y is None:
+                x, y = parse_spbc_id(spbc_id)
+
+            raw_len = int(row["raw_spbc_len"])
+            observed_lengths.add(raw_len)
+            #metadata dictionary
+            lookup[raw_spbc] = {
+                "spbc_id": spbc_id,
+                "x": x,
+                "y": y,
+                "raw_spbc_len": raw_len,
+                "read_count": int(row["read_count"] or 0),
+            }
+
+        if not lookup:
+            raise ValueError(
+                f"No SPBC lookup entries loaded from {sqlite_path}. "
+                f"Check --hd_spbc_lengths or the index content."
+            )
+
+        return lookup, tuple(sorted(observed_lengths))
+
+    finally:
+        conn.close()
+
+
+# Visium HD 3' read annotation using LongAIRR_whitelist index
+#
+# matches anchors sequences; annotates UMI (9 nt); looks for spbc-matches using
+# offset logic (0,1,2). Possible offset-based are NOT appended to the UMI
+#
+# Read with multiple spbc-hits do not pass annotation
+class VisiumHDIndexDecoder:
+    def __init__(self, spbc_index, umi_length=9, offsets=(0, 1, 2), candidate_lengths=None):
+        self.spbc_index = spbc_index
+        self.umi_length = umi_length
+        self.offsets = tuple(offsets)
+        self.lookup, loaded_lengths = load_visium_hd_sqlite_index(
+            spbc_index,
+            candidate_lengths=candidate_lengths,
+        )
+        self.candidate_lengths = tuple(candidate_lengths) if candidate_lengths is not None else loaded_lengths
+
+        print(
+            f"Visium HD SQLite-index matching enabled. "
+            f"Loaded {len(self.lookup)} raw-SPBC lookup entries from {spbc_index}. "
+            f"offsets={self.offsets}, UMI length={self.umi_length}, "
+            f"raw SPBC lengths={self.candidate_lengths}."
+        )
+
+    def decode(self, sequence):
+        if len(sequence) < self.umi_length + min(self.offsets) + min(self.candidate_lengths):
+            return None
+
+        # Fixed 9 nt UMI by default. Offsets only shift barcode search
+        umi = sequence[:self.umi_length].upper()
+        hits = []
+
+        for offset in self.offsets:
+            spbc_start = self.umi_length + offset
+
+            for raw_len in self.candidate_lengths:
+                end = spbc_start + raw_len
+                if len(sequence) < end:
+                    continue
+
+                raw_spbc = sequence[spbc_start:end].upper()
+                hit = self.lookup.get(raw_spbc)
+                if hit is None:
+                    continue
+
+                hits.append({
+                    "raw_spbc": raw_spbc,
+                    "spbc_id": hit["spbc_id"],
+                    "x": hit["x"],
+                    "y": hit["y"],
+                    "offset": offset,
+                    "raw_spbc_len": raw_len,
+                    "read_count": hit["read_count"],
+                    "trim_len": end,
+                })
+
+        if not hits:
+            return None
+
+        corrected_ids = {h["spbc_id"] for h in hits}
+        if len(corrected_ids) > 1:
+            # Ambiguous read-level annotation: multiple corrected spatial IDs hit; omit read
+            return None
+
+        # If multiple raw windows map to the same corrected ID, choose
+        # deterministically by index read-count rank, then offset/length or lexicographically smallest for reproducibility
+        best = sorted(
+            hits,
+            key=lambda h: (-h["read_count"], h["offset"], -h["raw_spbc_len"], h["raw_spbc"]),
+        )[0]
+
+        raw_spbc = best["raw_spbc"]
+        spbc_id = best["spbc_id"]
+        group = f"{umi}{raw_spbc}"
+        group_id = f"{umi}{spbc_id}"
+        # New header fields
+        header_fields = [
+            f"UMI={umi}",
+            f"SPBC={raw_spbc}",
+            f"SPBCID={spbc_id}",
+            f"UMISPBC={group}",
+            f"UMISPBCID={group_id}",
+        ]
+
+        if best["x"] is not None and best["y"] is not None:
+            header_fields.extend([
+                f"X={best['x']}",
+                f"Y={best['y']}",
+            ])
+
+        return {
+            "mode": "visiumhd_index",
+            "trim_len": best["trim_len"],
+            "header_fields": header_fields,
+        }
+
+#                               [DEPRECATED]
+#                               +++++3+++++
+
+# Visium HD 3' annotation using two spbc-whitelist files with true-spbc seqs.
 class VisiumHDDecoder:
     def __init__(self, bc1_file, bc2_file, umi_base_length=9, offsets=(0, 1, 2),
         split_order=((15, 14), (15, 15), (16, 14), (16, 15)), hd_bins="002um"):
@@ -403,11 +602,13 @@ def parse_args():
     parser.add_argument("--mismatch_fraction", type=float, default=0.0, help="Fraction of allowed mismatches between SPBCs in Visium mode (default: 0.0)")
 
     # Visium HD 3' arguments
-    parser.add_argument("--bc1_file", help="Path to valid BC1 whitelist file (Visium HD mode)")
+    parser.add_argument("--spbc_index", help="Path to LongAIRR_whitelist SQLite SPBC index (preferred Visium HD mode)")
+    parser.add_argument("--hd_spbc_lengths", default="auto", help="Raw SPBC lengths to try in SQLite-index mode: auto or comma-separated integers (default: auto)")
+    parser.add_argument("--bc1_file", help="Path to valid BC1 whitelist file (legacy Visium HD mode)")
     parser.add_argument("--bc2_file", help="Path to valid BC2 whitelist file (Visium HD mode)")
-    parser.add_argument("--hd_umi_base_length", type=int, default=9, help="Base UMI length for Visium HD mode before offset nt are included (default: 9)")
+    parser.add_argument("--hd_umi_base_length", type=int, default=9, help="UMI length for Visium HD mode (default: 9). In SQLite-index mode this is fixed; offsets shift only the SPBC search start.")
     parser.add_argument("--hd_offsets", type=str, default="0,1,2", help="Comma-separated offsets to try in Visium HD mode (default: 0,1,2)")
-    parser.add_argument("--hd_bins", type=str, default="002um", help="Prefix used in SPBC10X barcode for Visium HD mode (default: 002um)")
+    parser.add_argument("--hd_bins", type=str, default="002um", help="Prefix used for SPBCID barcode for Visium HD mode (default: 002um)")
 
     return parser.parse_args()
 
@@ -429,21 +630,39 @@ def main():
         )
 
     elif args.spatial_mode == "visiumhd":
-        if args.bc1_file is None or args.bc2_file is None:
-            raise ValueError("--bc1_file and --bc2_file are required in --spatial_mode visiumhd")
-
         try:
             offsets = tuple(int(x) for x in args.hd_offsets.split(",") if x.strip() != "")
         except ValueError:
             raise ValueError("--hd_offsets must be a comma-separated list of integers, e.g. 0,1,2")
 
-        decoder = VisiumHDDecoder(
-            bc1_file=args.bc1_file,
-            bc2_file=args.bc2_file,
-            umi_base_length=args.hd_umi_base_length,
-            offsets=offsets,
-            hd_bins=args.hd_bins,
-        )
+        if not offsets:
+            raise ValueError("--hd_offsets must contain at least one offset")
+
+        if args.hd_umi_base_length <= 0:
+            raise ValueError("--hd_umi_base_length must be > 0")
+
+        if args.spbc_index is not None:
+            candidate_lengths = parse_optional_lengths(args.hd_spbc_lengths)
+            decoder = VisiumHDIndexDecoder(
+                spbc_index=args.spbc_index,
+                umi_length=args.hd_umi_base_length,
+                offsets=offsets,
+                candidate_lengths=candidate_lengths,
+            )
+        else:
+            if args.bc1_file is None or args.bc2_file is None:
+                raise ValueError(
+                    "In --spatial_mode visiumhd, provide either --spbc_index "
+                    "or both --bc1_file and --bc2_file for legacy mode"
+                )
+
+            decoder = VisiumHDDecoder(
+                bc1_file=args.bc1_file,
+                bc2_file=args.bc2_file,
+                umi_base_length=args.hd_umi_base_length,
+                offsets=offsets,
+                hd_bins=args.hd_bins,
+            )
 
     else:
         raise ValueError(f"Unsupported spatial mode: {args.spatial_mode}")
