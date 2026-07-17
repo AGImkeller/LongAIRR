@@ -273,23 +273,23 @@ if [[ "${env_bin}" == "TRUE" ]]; then
   fi
 
   # Download and install Dorado
-  dorado_version="0.9.1"
-  dorado_url="https://cdn.oxfordnanoportal.com/software/analysis/dorado-${dorado_version}-linux-x64.tar.gz"
-  dorado_tmp_dir=$(mktemp -d)
+  ##dorado_version="0.9.1"
+  ##dorado_url="https://cdn.oxfordnanoportal.com/software/analysis/dorado-${dorado_version}-linux-x64.tar.gz"
+  ##dorado_tmp_dir=$(mktemp -d)
 
-  echo "Downloading Dorado..."
-  wget -q -O "${dorado_tmp_dir}/dorado.tar.gz" "${dorado_url}"
+  ##echo "Downloading Dorado..."
+  ##wget -q -O "${dorado_tmp_dir}/dorado.tar.gz" "${dorado_url}"
 
-  echo "Extracting Dorado..."
-  tar -xzf "${dorado_tmp_dir}/dorado.tar.gz" -C "${dorado_tmp_dir}"
+  ##echo "Extracting Dorado..."
+  ##tar -xzf "${dorado_tmp_dir}/dorado.tar.gz" -C "${dorado_tmp_dir}"
 
-  echo "Installing Dorado into ${bin_dir}..."
-  mv "${dorado_tmp_dir}/dorado-${dorado_version}-linux-x64/" "${bin_dir}/dorado-${dorado_version}-linux-x64/"
-  chmod +x "${bin_dir}/dorado-${dorado_version}-linux-x64/"
+  ##echo "Installing Dorado into ${bin_dir}..."
+  ##mv "${dorado_tmp_dir}/dorado-${dorado_version}-linux-x64/" "${bin_dir}/dorado-${dorado_version}-linux-x64/"
+  ##chmod +x "${bin_dir}/dorado-${dorado_version}-linux-x64/"
 
   # Cleanup
-  rm -rf "${dorado_tmp_dir}"
-  echo "Dorado installed successfully inside the '${env_name}' environment"
+  ##rm -rf "${dorado_tmp_dir}"
+  ##echo "Dorado installed successfully inside the '${env_name}' environment"
 
   # Add LongAIRR section in .bashrc
   sed -i '/# >>> LongAIRR PATH >>>/,/# <<< LongAIRR PATH <<</d' "$HOME/.bashrc"
@@ -322,6 +322,15 @@ EOF
   # Create symbolic link for the main script
   if [[ -f "${bin_dir}/${main_script}" ]]; then
     ln -sf "${bin_dir}/${main_script}" "${bin_dir}/longairr"
+  fi
+
+  # Install the LongAIRR logo used by the self-contained HTML report.
+  local_logo="$(dirname "$0")/vignette/figures/longairr_logo.png"
+
+  if [[ -f "${local_logo}" ]]; then
+    cp -f "${local_logo}" "${bin_dir}/longairr_logo.png"
+  else
+    echo "WARNING: LongAIRR logo was not found at ${local_logo}. Reports will be generated without the logo."
   fi
 
   if [[ "${verbose}" == "TRUE" ]]; then

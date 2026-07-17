@@ -37,7 +37,6 @@ COLLAPSE_ANCHOR_ERROR: 0.2           # --anchor-error:   default: 0.2
 COLLAPSE_LENGTH: 12                  # --umi-length:     default: 12 (Visium V1 only)
 
 COLLAPSE_SPBC_ERROR: 0.0             # --spbc-error:     default: 0.0
-COLLAPSE_SPBC_FAILED: True           # --spbc-failed:    default: TRUE
 COLLAPSE_SPBC_LENGTH: 16             # --spbc-length:    default: 16 (Visium V1 only)
 
 COLLAPSE_MINL: 700                   # --minl:           default: -1 (no length filtering)

@@ -128,6 +128,37 @@ update_progress() {
 }
 
 
+#-----------reporting utils------------#
+
+#######################################
+# Resolve and initialize the LongAIRR run root
+#
+# Arguments:
+#   $1 - Module output directory
+#   $2 - Optional explicitly requested run root
+#   $3 - LongAIRR version
+#
+# Output:
+#   Resolved absolute run-root path on stdout
+#######################################
+resolve_longairr_run_root() {
+  local output="$1"
+  local requested_run_root="$2"
+  local longairr_version="$3"
+
+  local metadata_command=(
+    longairr_metadata.py init-run
+    --output "${output}"
+    --longairr-version "${longairr_version}"
+  )
+
+  if [[ -n "${requested_run_root}" ]]; then
+    metadata_command+=(--run-root "${requested_run_root}")
+  fi
+
+  "${metadata_command[@]}"
+}
+
 #-----------basecalling utils---------#
 
 #######################################

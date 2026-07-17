@@ -4,54 +4,56 @@ configfile: "config.yaml"
 locus_mapping = list(zip(config["SEQTAG_regex"], config["locus_igblast"]))
 copy_config = config["COPY_CONFIG"]
 
-#def collapse_extra_args(config):
-#    library = config["COLLAPSE_LIBRARY"]
-#
-#    if library == "visium":
-#        return f"--visium-spbc {config['VISIUM_SPBCS_TXT']}"
-#    elif library == "visiumhd":
-#        return f"--hd-spbc1 {config['VISIUMHD_SPBC1_TXT']} --hd-spbc2 {config['VISIUMHD_SPBC2_TXT']}"
-#    elif library == "bulk":
-#        return ""
-#    else:
-#        raise ValueError(f"Unsupported COLLAPSE_LIBRARY: {library}")
-    
+# AIRR outputs requested by the current locus mapping
+# This list contains IG, TCR, or both depending on config.yaml.
+airr_outputs = [
+    f"{config['OUTPUT']}airr/{igblast}_p_parse-select.tsv"
+    for regex, igblast in locus_mapping
+]
+
+report_outputs = [
+    f"{config['OUTPUT']}summary.tsv",
+    f"{config['OUTPUT']}longairr_report.html",
+]
+
+final_outputs = (
+    airr_outputs
+    + report_outputs
+    + ([f"{config['OUTPUT']}/config.yaml"] if copy_config else [])
+)
+
 
 def collapse_extra_args(config):
     library = config["COLLAPSE_LIBRARY"]
 
     if library == "visium":
         return f"--visium-spbc {config['VISIUM_SPBCS_TXT']}"
+
     elif library == "visiumhd":
         hd_index = config.get("VISIUMHD_SPBC_INDEX", "")
 
-        if hd_index:
-            return f"--hd-spbc-index {hd_index}"
+        if not hd_index:
+            raise ValueError(
+                "COLLAPSE_LIBRARY is 'visiumhd', but "
+                "VISIUMHD_SPBC_INDEX was not provided."
+            )
 
-        bc1 = config.get("VISIUMHD_SPBC1_TXT", "")
-        bc2 = config.get("VISIUMHD_SPBC2_TXT", "")
+        return f"--hd-spbc-index {hd_index}"
 
-        if bc1 and bc2:
-            return f"--hd-spbc1 {bc1} --hd-spbc2 {bc2}"
-
-        raise ValueError(
-            "COLLAPSE_LIBRARY is 'visiumhd', but neither VISIUMHD_SPBC_INDEX "
-            "nor both VISIUMHD_SPBC1_TXT/VISIUMHD_SPBC2_TXT were provided."
-        )
     elif library == "bulk":
         return ""
+
     else:
-        raise ValueError(f"Unsupported COLLAPSE_LIBRARY: {library}")
+        raise ValueError(
+            f"Unsupported COLLAPSE_LIBRARY: {library}"
+        )
 
 locus_mapping_dict = {pair[1]: pair[0] for pair in locus_mapping}
 
 # Define final outputs
 rule all:
     input:
-        [f"{config['OUTPUT']}airr_split/{regex}/airr/{igblast}_p_parse-select.tsv"
-         for regex, igblast in locus_mapping] + (
-            [f"{config['OUTPUT']}/config.yaml"] if copy_config else []
-        )
+        final_outputs
 
 
 # Rule: longairr filter
@@ -93,7 +95,7 @@ rule collapse:
         umi_length=config["COLLAPSE_LENGTH"],
 
         spbc_error=config["COLLAPSE_SPBC_ERROR"],
-        spbc_failed=config["COLLAPSE_SPBC_FAILED"],
+        #spbc_failed=config["COLLAPSE_SPBC_FAILED"],
         spbc_length=config["COLLAPSE_SPBC_LENGTH"],
 
         minl=config["COLLAPSE_MINL"],
@@ -126,7 +128,6 @@ rule collapse:
             --umi-length {params.umi_length} \
             --anchor-error {params.anchor_error} \
             --spbc-error {params.spbc_error} \
-            --spbc-failed {params.spbc_failed} \
             --spbc-length {params.spbc_length} \
             --minl {params.minl} \
             --maxl {params.maxl} \
@@ -189,12 +190,12 @@ if "ig" in locus_mapping_dict:
         input:
             seqtag_ig=f"{config['OUTPUT']}seqtag/{locus_mapping_dict['ig']}/combined_{locus_mapping_dict['ig']}.fasta"
         output:
-            airr_ig=f"{config['OUTPUT']}airr_split/{locus_mapping_dict['ig']}/airr/ig_p_parse-select.tsv"
+            airr_ig=f"{config['OUTPUT']}airr/ig_p_parse-select.tsv"
         params:
             prod_heavy=config["AIRR_PH"],
             igblast_dir=config["DATABASES_PARENT"] + "igblast/",
             germlines_dir=config["DATABASES_PARENT"] + "germlines/imgt/human/vdj/",
-            output=f"{config['OUTPUT']}airr_split/{locus_mapping_dict['ig']}/"
+            output=config['OUTPUT']
         log:
             f"{config['OUTPUT']}snakemake_logs/airr_{locus_mapping_dict['ig']}_ig.log"
         shell:
@@ -216,12 +217,12 @@ if "tr" in locus_mapping_dict:
         input:
             seqtag_tr=f"{config['OUTPUT']}seqtag/{locus_mapping_dict['tr']}/combined_{locus_mapping_dict['tr']}.fasta"
         output:
-            airr_tr=f"{config['OUTPUT']}airr_split/{locus_mapping_dict['tr']}/airr/tr_p_parse-select.tsv"
+            airr_tr=f"{config['OUTPUT']}airr/tr_p_parse-select.tsv"
         params:
             prod_heavy=config["AIRR_PH"],
             igblast_dir=config["DATABASES_PARENT"] + "igblast/",
             germlines_dir=config["DATABASES_PARENT"] + "germlines/imgt/human/vdj/",
-            output=f"{config['OUTPUT']}airr_split/{locus_mapping_dict['tr']}/"
+            output=f"{config['OUTPUT']}"
         log:
             f"{config['OUTPUT']}snakemake_logs/airr_{locus_mapping_dict['tr']}_tr.log"
         shell:
@@ -235,6 +236,26 @@ if "tr" in locus_mapping_dict:
                 {params.output} \
                 > {log} 2>&1
             """
+
+
+# Rule: generate final LongAIRR report
+# Waits only AIRR outputs requested through locus_mapping
+rule report:
+    input:
+        airr_outputs
+    output:
+        summary=f"{config['OUTPUT']}summary.tsv",
+        html=f"{config['OUTPUT']}longairr_report.html"
+    params:
+        run_root=config["OUTPUT"]
+    log:
+        f"{config['OUTPUT']}snakemake_logs/report.log"
+    shell:
+        """
+        longairr report \
+            {params.run_root} \
+            > {log} 2>&1
+        """
 
 
 # Rule: copy specified config.yaml to OUTPUT
