@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
+from urllib.parse import quote
 
 #================================================================#
 #
@@ -27,7 +28,11 @@ from typing import Any, Iterable, Mapping, Sequence
 #                 completion when running parallel processes. 
 #                 This module can be used seperately at any stage of a full longairr run,
 #                 e.g., after running 'longairr filter' and 'longairr collapse', or
-#                 will be automatically executed at the end of 'longairr airr'
+#                 following 'longairr airr' for a complete report.
+#                 After copying the results folder, linked output files should
+#                 show the original paths when data was generated, but are linked to the
+#                 new location in the background, if results-directory contains
+#                 expected module-directories.
 #
 #        AUTHOR:  Jonas Schuck, jschuckdev@gmail.com
 #    BUG-REPORT:  https://github.com/AGImkeller/LongAIRR/issues
@@ -141,6 +146,15 @@ class SummaryRow:
             _clean_cell(self.output_description),
         ]
 
+# used to update file-paths when data is copied
+@dataclass(frozen=True)
+class FileReference:
+
+    recorded_path: str
+    resolved_path: Path | None
+    href: str | None
+    status: str
+    run_relative_path: Path | None = None
 
 
 # generate one line per summary entry
@@ -200,7 +214,9 @@ def _parse_iso_datetime(value: str, key: str, path: Path) -> datetime:
             f"'{key}' must be an ISO-8601 datetime in {path}: {value}"
         ) from exc
 
-
+# validity-check that schema, runID, longairr version match across module-metadata
+# A copied or moved results-root now counts as valid,
+# original file-paths remain available in the report
 def _validate_run_marker(
     run_root: Path,
     run_file: Path,
@@ -219,18 +235,10 @@ def _validate_run_marker(
     _require_string(data, "created_at", run_file)
     _parse_iso_datetime(str(data["created_at"]), "created_at", run_file)
 
-    marker_root = data.get("run_root")
-    if isinstance(marker_root, str) and marker_root:
-        marker_path = Path(marker_root).expanduser()
-        try:
-            marker_path = marker_path.resolve()
-        except OSError:
-            pass
-        if marker_path != run_root:
-            warnings.append(
-                "The run marker's stored run_root differs from the directory "
-                f"being reported: marker={marker_path}, requested={run_root}."
-            )
+    # paths-update if results-root was moved after completion
+    # results-root remains available, internal file paths are rebased; warning turned off here 
+    _ = run_root, warnings
+
 
 
 def _validate_scope(scope: Mapping[str, Any], path: Path) -> dict[str, str]:
@@ -1091,22 +1099,102 @@ def _record_transition(record: ModuleRecord) -> tuple[int | None, int | None, st
         return None, None, "Output"
     return values[0], values[-1], "Output"
 
+# file-paths helpers
+def _normalized_path(path: Path) -> Path:
+    """Return an absolute normalized path without requiring it to exist."""
 
-def _file_href(value: str) -> str:
-    file_path = Path(value).expanduser()
     try:
-        if file_path.is_absolute():
-            return file_path.as_uri()
-    except ValueError:
-        pass
-    return value
+        return path.resolve(strict=False)
+    except (OSError, RuntimeError):
+        return Path(os.path.abspath(path))
 
 
-def _file_exists(value: str) -> bool:
+def _path_exists(path: Path) -> bool:
     try:
-        return Path(value).expanduser().exists()
+        return path.exists()
     except OSError:
         return False
+
+
+def _original_run_root(model: ReportModel) -> Path:
+    stored_root = model.run_data.get("run_root")
+    if isinstance(stored_root, str) and stored_root.strip():
+        return _normalized_path(Path(stored_root).expanduser())
+    return model.run_root
+
+# update paths relative to HTML report in case root-results was moved
+def _relative_file_href(target: Path, report_path: Path) -> str:
+
+    try:
+        relative = os.path.relpath(target, start=report_path.parent)
+    except ValueError:
+        # Fallback for platforms where two paths cannot be made relative,
+        # for example paths on different Windows drives.
+        return target.as_uri()
+
+    return quote(Path(relative).as_posix(), safe="/:@")
+
+
+def _resolve_file_reference(
+    value: str,
+    model: ReportModel,
+    report_path: Path,
+) -> FileReference:
+    """Resolve a metadata path against the original and current run roots."""
+
+    original_root = _original_run_root(model)
+    recorded = Path(value).expanduser()
+    recorded_absolute = _normalized_path(
+        recorded if recorded.is_absolute() else original_root / recorded
+    )
+
+    run_relative: Path | None
+    try:
+        run_relative = recorded_absolute.relative_to(original_root)
+    except ValueError:
+        run_relative = None
+
+    # Prefer the equivalent file below the current run root. The generated
+    # href is relative to the HTML file and therefore remains portable.
+    if run_relative is not None:
+        current_target = _normalized_path(model.run_root / run_relative)
+        if _path_exists(current_target):
+            status = (
+                "present"
+                if current_target == recorded_absolute
+                else "relocated"
+            )
+            return FileReference(
+                recorded_path=value,
+                resolved_path=current_target,
+                href=_relative_file_href(current_target, report_path),
+                status=status,
+                run_relative_path=run_relative,
+            )
+
+    # Paths outside the run root are external provenance inputs. Keep their
+    # absolute location when they still exist.
+    if _path_exists(recorded_absolute):
+        try:
+            href = recorded_absolute.as_uri()
+        except ValueError:
+            href = value
+
+        return FileReference(
+            recorded_path=value,
+            resolved_path=recorded_absolute,
+            href=href,
+            status="present",
+            run_relative_path=run_relative,
+        )
+
+    return FileReference(
+        recorded_path=value,
+        resolved_path=None,
+        href=None,
+        status="missing",
+        run_relative_path=run_relative,
+    )
 
 
 def _metric_card(label: str, value: int | str | None, detail: str) -> str:
@@ -1739,27 +1827,62 @@ def _classify_file(record: ModuleRecord, key: str) -> str:
     return "other"
 
 
-def _file_rows(files: Sequence[tuple[str, str]]) -> str:
+def _file_rows(
+    files: Sequence[tuple[str, str]],
+    model: ReportModel,
+    report_path: Path,
+) -> str:
     if not files:
         return '<div class="empty compact">No files recorded.</div>'
+
+    badge_html = {
+        "present": '<span class="file-badge present">Present</span>',
+        "relocated": '<span class="file-badge relocated">Relocated</span>',
+        "missing": '<span class="file-badge missing">Not found</span>',
+    }
+
     rows: list[str] = []
+
     for key, value in files:
-        badge = (
-            '<span class="file-badge present">Present</span>'
-            if _file_exists(value)
-            else '<span class="file-badge missing">Not found</span>'
-        )
+        reference = _resolve_file_reference(value, model, report_path)
+        recorded_html = f'<code>{_html(value)}</code>'
+
+        if reference.href is not None:
+            path_html = (
+                f'<a href="{_html(reference.href)}">{recorded_html}</a>'
+            )
+        else:
+            # Do not create a hyperlink when no existing file was found.
+            path_html = recorded_html
+
+        if (
+            reference.status == "relocated"
+            and reference.run_relative_path is not None
+        ):
+            path_html += (
+                '<div class="subtle">Current run path: '
+                f'{_html(reference.run_relative_path.as_posix())}</div>'
+            )
+
         rows.append(
             '<tr>'
             f'<th>{_html(_humanize_key(key))}</th>'
-            f'<td><a href="{_html(_file_href(value))}">'
-            f'<code>{_html(value)}</code></a>{badge}</td>'
+            f'<td>{path_html}{badge_html[reference.status]}</td>'
             '</tr>'
         )
-    return '<div class="table-wrap compact"><table class="kv"><tbody>' + ''.join(rows) + '</tbody></table></div>'
+
+    return (
+        '<div class="table-wrap compact"><table class="kv"><tbody>'
+        + ''.join(rows)
+        + '</tbody></table></div>'
+    )
 
 
-def _file_sections(record: ModuleRecord) -> str:
+def _file_sections(
+    record: ModuleRecord,
+    model: ReportModel,
+    report_path: Path,
+) -> str:
     groups: dict[str, list[tuple[str, str]]] = {
         "inputs": [],
         "outputs": [],
@@ -1779,20 +1902,20 @@ def _file_sections(record: ModuleRecord) -> str:
         if groups[group_key]:
             sections.append(
                 f'<section><h4>{_html(title)}</h4>'
-                f'{_file_rows(groups[group_key])}</section>'
+                f'{_file_rows(groups[group_key], model, report_path)}</section>'
             )
 
     if groups["intermediates"]:
         sections.append(
             '<details class="sub-detail"><summary>Intermediate files '
             f'({len(groups["intermediates"])})</summary>'
-            f'{_file_rows(groups["intermediates"])}</details>'
+            f'{_file_rows(groups["intermediates"], model, report_path)}</details>'
         )
     if groups["other"]:
         sections.append(
             '<details class="sub-detail"><summary>Other recorded files '
             f'({len(groups["other"])})</summary>'
-            f'{_file_rows(groups["other"])}</details>'
+            f'{_file_rows(groups["other"], model, report_path)}</details>'
         )
     return ''.join(sections) or '<div class="empty compact">No files recorded.</div>'
 
@@ -1802,7 +1925,7 @@ def _counts_table(record: ModuleRecord) -> str:
     return _settings_table(rows, "No counts recorded.")
 
 
-def _record_details(model: ReportModel) -> str:
+def _record_details(model: ReportModel, report_path: Path) -> str:
     details: list[str] = []
     for record in model.records:
         metadata_rows = [
@@ -1826,7 +1949,7 @@ def _record_details(model: ReportModel) -> str:
             f'{_parameter_sections(record)}'
             '</div>'
             '<div class="file-section-grid">'
-            f'{_file_sections(record)}'
+            f'{_file_sections(record, model, report_path)}'
             '</div>'
             '<details class="sub-detail"><summary>Record metadata</summary>'
             f'{_settings_table(metadata_rows, "No record metadata.")}'
@@ -1836,7 +1959,7 @@ def _record_details(model: ReportModel) -> str:
     return ''.join(details) if details else '<div class="empty">No module records available.</div>'
 
 
-def _qc_links(model: ReportModel) -> str:
+def _qc_links(model: ReportModel, report_path: Path) -> str:
     links: list[str] = []
     seen: set[str] = set()
     for record in model.records:
@@ -1849,11 +1972,18 @@ def _qc_links(model: ReportModel) -> str:
                 or lower_key.endswith("_html")
                 or lower_value.endswith(".html")
             ):
-                if value in seen:
+                reference = _resolve_file_reference(
+                    value,
+                    model,
+                    report_path,
+                )
+
+                if reference.href is None or reference.href in seen:
                     continue
-                seen.add(value)
+
+                seen.add(reference.href)
                 links.append(
-                    f'<a class="resource" href="{_html(_file_href(value))}">'
+                    f'<a class="resource" href="{_html(reference.href)}">'
                     f'<span>{_html(record.module.title())}</span>'
                     f'<strong>{_html(_humanize_key(key))}</strong>'
                     f'<small>{_html(value)}</small></a>'
@@ -1861,6 +1991,22 @@ def _qc_links(model: ReportModel) -> str:
     if not links:
         return '<div class="empty compact">No linked QC HTML reports were recorded.</div>'
     return '<div class="resource-grid">' + ''.join(links) + '</div>'
+
+
+# relocation info
+def _relocation_notice(model: ReportModel) -> str:
+    original_root = _original_run_root(model)
+
+    if original_root == model.run_root:
+        return ""
+
+    return (
+        '<div class="notice relocation">'
+        '<strong>Relocated run directory.</strong> '
+        f'Original run root: <code>{_html(original_root)}</code><br>'
+        f'Current run root: <code>{_html(model.run_root)}</code>'
+        '</div>'
+    )
 
 
 def _find_logo_path() -> Path | None:
@@ -1897,7 +2043,17 @@ def _logo_data_uri() -> str | None:
     return f"data:image/png;base64,{encoded}"
 
 
-def render_html_report(model: ReportModel) -> str:
+def render_html_report(
+    model: ReportModel,
+    report_path: str | Path | None = None,
+) -> str:
+    if report_path is None:
+        resolved_report_path = model.run_root / "longairr_report.html"
+    else:
+        resolved_report_path = Path(report_path).expanduser()
+        if not resolved_report_path.is_absolute():
+            resolved_report_path = resolved_report_path.resolve()
+
     generated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
     run_name = model.run_root.name or str(model.run_root)
     logo_uri = _logo_data_uri()
@@ -1911,7 +2067,7 @@ def render_html_report(model: ReportModel) -> str:
 
     css = r'''
 :root{--bg:#f4f7fb;--surface:#fff;--soft:#f8fafc;--ink:#142033;--muted:#66758a;--line:#dce4ee;--accent:#285e9a;--accent2:#173f70;--success:#237a57;--successbg:#e9f7f0;--warning:#9a6418;--warningbg:#fff6df;--danger:#a13b3b;--dangerbg:#fdeeee;--productive:#2b8a62;--nonproductive:#d18a2e;--valid:#3b78b8;--unannotated:#cbd5e1;--shadow:0 14px 36px rgba(30,54,83,.08)}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.5}a{color:var(--accent2)}code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;overflow-wrap:anywhere}.shell{max-width:1480px;margin:auto;padding:28px}.hero{background:linear-gradient(135deg,#173f70,#285e9a 58%,#3b7bbb);color:#fff;padding:34px;border-radius:22px;box-shadow:var(--shadow)}.hero-content{display:flex;gap:28px;align-items:center;justify-content:space-between}.hero-copy{min-width:0;flex:1}.hero-logo-wrap{flex:0 0 auto;background:transparent;border-radius:0;padding:0;box-shadow:none;}.hero-logo{display:block;width:224px;height:auto;object-fit:contain;}.kicker{margin:0 0 8px;font-size:.78rem;font-weight:750;letter-spacing:.16em;text-transform:uppercase;opacity:.78}.hero h1{margin:0;font-size:clamp(2rem,4vw,3.2rem);line-height:1.05}.subtitle{max-width:980px;margin:14px 0 0;font-size:1rem;opacity:.88;overflow-wrap:anywhere}.meta{display:flex;flex-wrap:wrap;align-items:center;gap:10px 22px;margin-top:24px;font-size:.88rem;opacity:.9}.validation-chip{display:inline-flex;border-radius:999px;padding:5px 10px;font-weight:760}.validation-chip.success{color:#dff8eb;background:rgba(23,112,75,.48)}.validation-chip.warning{color:#fff2ca;background:rgba(153,95,12,.5)}.tabs{display:flex;gap:8px;margin-top:22px;padding:7px;background:rgba(255,255,255,.13);border-radius:14px;width:fit-content}.tab{border:0;border-radius:10px;padding:10px 16px;cursor:pointer;color:#fff;background:transparent;font:inherit;font-weight:700}.tab.active{background:#fff;color:var(--accent2)}.panel{display:none}.panel.active{display:block}.section{margin-top:22px;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:24px;box-shadow:var(--shadow)}.section h2{margin:0 0 3px;font-size:1.35rem}.section h4{margin:0 0 10px}.desc{margin:0 0 18px;color:var(--muted);font-size:.93rem}.metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-top:22px}.metric-card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:var(--shadow)}.metric-label{color:var(--muted);font-size:.82rem;font-weight:750;text-transform:uppercase;letter-spacing:.05em}.metric-value{margin-top:7px;font-size:1.9rem;font-weight:780;letter-spacing:-.03em}.metric-detail{margin-top:3px;color:var(--muted);font-size:.85rem}.table-wrap{width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:13px}.table-wrap.compact{border-radius:10px}table{width:100%;border-collapse:collapse;background:var(--surface)}th,td{padding:12px 13px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}thead th{background:var(--soft);color:var(--muted);font-size:.76rem;text-transform:uppercase;letter-spacing:.05em}tbody tr:last-child td,tbody tr:last-child th{border-bottom:0}.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}.subtle{margin-top:2px;color:var(--muted);font-size:.78rem}.status,.file-badge{display:inline-flex;border-radius:999px;padding:3px 8px;font-size:.72rem;font-weight:760;white-space:nowrap}.status-success,.file-badge.present{color:var(--success);background:var(--successbg)}.status-failed,.file-badge.missing{color:var(--danger);background:var(--dangerbg)}.status-skipped{color:var(--warning);background:var(--warningbg)}.file-badge{margin-left:8px}.notice{border-radius:13px;padding:15px 17px;border:1px solid}.notice.warning{color:var(--warning);background:var(--warningbg);border-color:#ecd59f}.notice ul{margin:0}.empty{padding:28px;color:var(--muted);text-align:center}.empty.compact{padding:12px}.retention-chart{display:flex;flex-direction:column;gap:12px;margin-bottom:18px}.retention-row{display:grid;grid-template-columns:minmax(180px,260px) minmax(180px,1fr) 90px;gap:14px;align-items:center}.retention-label{font-size:.9rem}.retention-track{height:24px;border-radius:999px;background:#e9eef5;overflow:hidden}.retention-bar{height:100%;min-width:2px;border-radius:999px;background:linear-gradient(90deg,var(--accent2),var(--accent))}.retention-count{text-align:right;font-weight:760;font-variant-numeric:tabular-nums}.retention-table{margin-top:6px}.outcome-chart{display:flex;flex-direction:column;gap:22px}.outcome-row{display:grid;grid-template-columns:minmax(190px,260px) 1fr;gap:18px;align-items:center}.outcome-bar{display:flex;height:34px;border-radius:10px;overflow:hidden;background:#edf2f7}.outcome-segment{height:100%}.outcome-segment.productive,.legend-dot.productive{background:var(--productive)}.outcome-segment.nonproductive,.legend-dot.nonproductive{background:var(--nonproductive)}.outcome-segment.valid,.legend-dot.valid{background:var(--valid)}.outcome-segment.unannotated,.legend-dot.unannotated{background:var(--unannotated)}.outcome-counts{display:flex;flex-wrap:wrap;gap:7px 18px;margin-top:8px;color:var(--muted);font-size:.83rem}.legend-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}.resource-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}.resource{display:flex;flex-direction:column;gap:3px;color:inherit;text-decoration:none;border:1px solid var(--line);border-radius:13px;padding:14px;background:var(--soft)}.resource span{color:var(--muted);font-size:.75rem;text-transform:uppercase;font-weight:750}.resource small{color:var(--muted);overflow-wrap:anywhere}.collapsible-section{padding:0;overflow:hidden}.collapsible-section>summary{cursor:pointer;list-style:none;padding:22px 24px;font-weight:780}.collapsible-section>summary::-webkit-details-marker{display:none}.collapsible-section>summary:after{content:"+";float:right;color:var(--accent)}.collapsible-section[open]>summary:after{content:"−"}.collapsible-content{padding:0 24px 24px}.record-detail{background:var(--surface);border:1px solid var(--line);border-radius:13px;margin-bottom:12px;overflow:hidden}.record-detail summary{display:grid;grid-template-columns:minmax(170px,1fr) minmax(130px,auto) auto auto;gap:12px;align-items:center;cursor:pointer;padding:15px 17px;background:var(--soft)}.record-detail[open]>summary{border-bottom:1px solid var(--line)}.record-title{font-weight:780}.record-scope,.record-runtime{color:var(--muted);font-size:.84rem}.record-body{padding:18px}.detail-grid{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);gap:18px}.file-section-grid>section{margin-top:18px}.sub-detail{margin-top:16px;border:1px solid var(--line);border-radius:11px;overflow:hidden}.sub-detail>summary{cursor:pointer;background:var(--soft);padding:12px 14px;font-weight:720}.sub-detail>.table-wrap{border:0;border-top:1px solid var(--line);border-radius:0}.kv th{width:220px;color:var(--muted);background:var(--soft)}.kv td{overflow-wrap:anywhere}.footer{padding:26px 6px 10px;color:var(--muted);font-size:.82rem;text-align:center}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.5}a{color:var(--accent2)}code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;overflow-wrap:anywhere}.shell{max-width:1480px;margin:auto;padding:28px}.hero{background:linear-gradient(135deg,#173f70,#285e9a 58%,#3b7bbb);color:#fff;padding:34px;border-radius:22px;box-shadow:var(--shadow)}.hero-content{display:flex;gap:28px;align-items:center;justify-content:space-between}.hero-copy{min-width:0;flex:1}.hero-logo-wrap{flex:0 0 auto;background:transparent;border-radius:0;padding:0;box-shadow:none;}.hero-logo{display:block;width:224px;height:auto;object-fit:contain;}.kicker{margin:0 0 8px;font-size:.78rem;font-weight:750;letter-spacing:.16em;text-transform:uppercase;opacity:.78}.hero h1{margin:0;font-size:clamp(2rem,4vw,3.2rem);line-height:1.05}.subtitle{max-width:980px;margin:14px 0 0;font-size:1rem;opacity:.88;overflow-wrap:anywhere}.meta{display:flex;flex-wrap:wrap;align-items:center;gap:10px 22px;margin-top:24px;font-size:.88rem;opacity:.9}.validation-chip{display:inline-flex;border-radius:999px;padding:5px 10px;font-weight:760}.validation-chip.success{color:#dff8eb;background:rgba(23,112,75,.48)}.validation-chip.warning{color:#fff2ca;background:rgba(153,95,12,.5)}.tabs{display:flex;gap:8px;margin-top:22px;padding:7px;background:rgba(255,255,255,.13);border-radius:14px;width:fit-content}.tab{border:0;border-radius:10px;padding:10px 16px;cursor:pointer;color:#fff;background:transparent;font:inherit;font-weight:700}.tab.active{background:#fff;color:var(--accent2)}.panel{display:none}.panel.active{display:block}.section{margin-top:22px;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:24px;box-shadow:var(--shadow)}.section h2{margin:0 0 3px;font-size:1.35rem}.section h4{margin:0 0 10px}.desc{margin:0 0 18px;color:var(--muted);font-size:.93rem}.metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-top:22px}.metric-card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:var(--shadow)}.metric-label{color:var(--muted);font-size:.82rem;font-weight:750;text-transform:uppercase;letter-spacing:.05em}.metric-value{margin-top:7px;font-size:1.9rem;font-weight:780;letter-spacing:-.03em}.metric-detail{margin-top:3px;color:var(--muted);font-size:.85rem}.table-wrap{width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:13px}.table-wrap.compact{border-radius:10px}table{width:100%;border-collapse:collapse;background:var(--surface)}th,td{padding:12px 13px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}thead th{background:var(--soft);color:var(--muted);font-size:.76rem;text-transform:uppercase;letter-spacing:.05em}tbody tr:last-child td,tbody tr:last-child th{border-bottom:0}.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}.subtle{margin-top:2px;color:var(--muted);font-size:.78rem}.status,.file-badge{display:inline-flex;border-radius:999px;padding:3px 8px;font-size:.72rem;font-weight:760;white-space:nowrap}.status-success,.file-badge.present{color:var(--success);background:var(--successbg)}.file-badge.relocated{color:var(--accent2);background:#eaf2fb}.status-failed,.file-badge.missing{color:var(--danger);background:var(--dangerbg)}.status-skipped{color:var(--warning);background:var(--warningbg)}.file-badge{margin-left:8px}.notice{border-radius:13px;padding:15px 17px;border:1px solid}.notice.warning{color:var(--warning);background:var(--warningbg);border-color:#ecd59f}.notice.relocation{color:var(--accent2);background:#edf5ff;border-color:#c9dcf2;margin-bottom:18px}.notice ul{margin:0}.empty{padding:28px;color:var(--muted);text-align:center}.empty.compact{padding:12px}.retention-chart{display:flex;flex-direction:column;gap:12px;margin-bottom:18px}.retention-row{display:grid;grid-template-columns:minmax(180px,260px) minmax(180px,1fr) 90px;gap:14px;align-items:center}.retention-label{font-size:.9rem}.retention-track{height:24px;border-radius:999px;background:#e9eef5;overflow:hidden}.retention-bar{height:100%;min-width:2px;border-radius:999px;background:linear-gradient(90deg,var(--accent2),var(--accent))}.retention-count{text-align:right;font-weight:760;font-variant-numeric:tabular-nums}.retention-table{margin-top:6px}.outcome-chart{display:flex;flex-direction:column;gap:22px}.outcome-row{display:grid;grid-template-columns:minmax(190px,260px) 1fr;gap:18px;align-items:center}.outcome-bar{display:flex;height:34px;border-radius:10px;overflow:hidden;background:#edf2f7}.outcome-segment{height:100%}.outcome-segment.productive,.legend-dot.productive{background:var(--productive)}.outcome-segment.nonproductive,.legend-dot.nonproductive{background:var(--nonproductive)}.outcome-segment.valid,.legend-dot.valid{background:var(--valid)}.outcome-segment.unannotated,.legend-dot.unannotated{background:var(--unannotated)}.outcome-counts{display:flex;flex-wrap:wrap;gap:7px 18px;margin-top:8px;color:var(--muted);font-size:.83rem}.legend-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}.resource-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}.resource{display:flex;flex-direction:column;gap:3px;color:inherit;text-decoration:none;border:1px solid var(--line);border-radius:13px;padding:14px;background:var(--soft)}.resource span{color:var(--muted);font-size:.75rem;text-transform:uppercase;font-weight:750}.resource small{color:var(--muted);overflow-wrap:anywhere}.collapsible-section{padding:0;overflow:hidden}.collapsible-section>summary{cursor:pointer;list-style:none;padding:22px 24px;font-weight:780}.collapsible-section>summary::-webkit-details-marker{display:none}.collapsible-section>summary:after{content:"+";float:right;color:var(--accent)}.collapsible-section[open]>summary:after{content:"−"}.collapsible-content{padding:0 24px 24px}.record-detail{background:var(--surface);border:1px solid var(--line);border-radius:13px;margin-bottom:12px;overflow:hidden}.record-detail summary{display:grid;grid-template-columns:minmax(170px,1fr) minmax(130px,auto) auto auto;gap:12px;align-items:center;cursor:pointer;padding:15px 17px;background:var(--soft)}.record-detail[open]>summary{border-bottom:1px solid var(--line)}.record-title{font-weight:780}.record-scope,.record-runtime{color:var(--muted);font-size:.84rem}.record-body{padding:18px}.detail-grid{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);gap:18px}.file-section-grid>section{margin-top:18px}.sub-detail{margin-top:16px;border:1px solid var(--line);border-radius:11px;overflow:hidden}.sub-detail>summary{cursor:pointer;background:var(--soft);padding:12px 14px;font-weight:720}.sub-detail>.table-wrap{border:0;border-top:1px solid var(--line);border-radius:0}.kv th{width:220px;color:var(--muted);background:var(--soft)}.kv td{overflow-wrap:anywhere}.footer{padding:26px 6px 10px;color:var(--muted);font-size:.82rem;text-align:center}
 @media(max-width:900px){.shell{padding:14px}.hero{padding:24px;border-radius:16px}.hero-logo{width:160px;height:auto}.detail-grid{grid-template-columns:1fr}.record-detail summary{grid-template-columns:1fr auto}.record-scope,.record-runtime{display:none}.retention-row,.outcome-row{grid-template-columns:1fr}.retention-count{text-align:left}.outcome-label{margin-bottom:-8px}}
 @media(max-width:600px){.hero-content{align-items:flex-start}.hero-logo-wrap{display:none}.tabs{width:100%;overflow-x:auto}.tab{white-space:nowrap}}
 @media print{body{background:#fff}.shell{max-width:none;padding:0}.hero,.section,.metric-card{box-shadow:none}.tabs{display:none}.panel{display:block!important}.section{break-inside:avoid}a{color:inherit;text-decoration:none}.collapsible-section>.collapsible-content{display:block}.record-detail{break-inside:avoid}}
@@ -1944,7 +2100,7 @@ document.querySelectorAll(".tab").forEach((button)=>{button.addEventListener("cl
 <article class="section"><h2>Module summary</h2><p class="desc"></p>{_module_summary_table(model)}</article>
 <article class="section"><h2>Read processing retention</h2><p class="desc"></p>{_retention_panel(_read_retention_stages(model), unit_label="Reads")}</article>
 <article class="section"><h2>Consensus and receptor yield</h2><p class="desc"></p>{_retention_panel(_yield_retention_stages(model), unit_label="Sequences")}</article>
-<article class="section"><h2>QC reports</h2><p class="desc">Available NanoPlot-reports found in the result directory</p>{_qc_links(model)}</article>
+<article class="section"><h2>QC reports</h2><p class="desc">Available NanoPlot-reports found in the result directory</p>{_qc_links(model, resolved_report_path)}</article>
 <details class="section collapsible-section"><summary>Full processing table</summary><div class="collapsible-content"><p class="desc"></p>{_summary_html_table(model)}</div></details>
 </section>
 
@@ -1954,7 +2110,7 @@ document.querySelectorAll(".tab").forEach((button)=>{button.addEventListener("cl
 </section>
 
 <section id="details" class="panel">
-<article class="section"><h2>Run details</h2><p class="desc">Used parameters, input / output / intermediate files, logs and runtime information.</p>{_record_details(model)}</article>
+<article class="section"><h2>Run details</h2><p class="desc">Used parameters, input / output / intermediate files, logs and runtime information.</p>{_relocation_notice(model)}{_record_details(model, resolved_report_path)}</article>
 </section>
 <footer class="footer">-Generated locally by LongAIRR-</footer>
 </main><script>{js}</script></body></html>'''
@@ -1990,7 +2146,7 @@ def write_html_report(model: ReportModel, output_path: str | Path | None = None)
         output = Path(output_path).expanduser()
         if not output.is_absolute():
             output = output.resolve()
-    _atomic_write_text(output, render_html_report(model))
+    _atomic_write_text(output, render_html_report(model, output))
     return output
 
 

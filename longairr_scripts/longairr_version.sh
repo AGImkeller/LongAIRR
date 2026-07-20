@@ -1,3 +1,3 @@
 
 
-LONGAIRR_VERSION="1.2.0-devel"
+LONGAIRR_VERSION="1.2.1-devel"
