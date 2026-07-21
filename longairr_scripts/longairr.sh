@@ -584,8 +584,9 @@ show_help_demux() {
     echo ""
     echo "Options:"
     echo "  --window-length  VALUE (int)  | Window length for anchor-match search (default: 50)"
-    echo "  --anchor-error   VALUE (int)  | Maximal allowed mismatches for anchor match (default: 0.2)"
+    echo "  --anchor-error   VALUE (float)  | Maximal allowed mismatches for anchor match (default: 0.2)"
     echo "  --verbose        TRUE | FALSE | Whether to print runtime information (default: TRUE)"
+    echo "  --run-root       VALUE (path) | Explicit LongAIRR run root for metadata (default: auto-detect from outdir)"
     echo "  -h, --help                    | Show this help message and exit"
     echo ""
     echo "Input/Output:"
@@ -612,6 +613,7 @@ show_help_demux() {
 # Arguments:
 #   --window-length <VALUE>   Minimum sequence quality threshold (default: 0)
 #   --anchor-error <VALUE>    Minimum sequence length threshold (default: no limit)
+#   --run-root <PATH>         Explicit LongAIRR run root (default: auto-detect from output)
 #   --verbose <TRUE|FALSE>    Whether to print detailed runtime information (default: TRUE)
 #   -h, --help                Show this help message and exit
 #
@@ -633,12 +635,13 @@ demux() {
   local input_barcodes
   local input_seqs
   local output
+
+  local requested_run_root=""
   
   local window_length=50
   local max_error=0.2
   
   local verbose="TRUE"
-  local read_summary="TRUE"
   # progress bar
   local current_step=0
   local demux_steps=7
@@ -651,6 +654,10 @@ demux() {
         ;;
       --anchor-error)
         max_error=$2
+        shift 2
+        ;;
+      --run-root)
+        requested_run_root="$2"
         shift 2
         ;;
       --verbose)
@@ -679,9 +686,24 @@ demux() {
     esac
   done
 
+  #-------Input / output checks 
+
+  if [[ -z "${input_seqs}" || -z "${input_barcodes}" || -z "${output}" ]]; then
+    echo "ERROR: Missing required arguments: all input and output parameters must be specified."
+    echo "For detailed usage, run 'longairr demux --help'."
+    exit 1
+  fi
+
+  if [[ ! -d "${output}" ]]; then
+    echo "ERROR: Specified output path \"${output}\" is not a valid directory."
+    echo "Ensure the path exists and is writable."
+    exit 1
+  fi
+
+
   #-----LOG FILE and PROGRESS BAR-----#
 
-  local log_path="${output}sample_demux/"
+  local log_path="${output%/}/sample_demux/"
   mkdir -p "${log_path}"
   local log_file="${log_path}longairr_demux.log"
 
@@ -691,13 +713,6 @@ demux() {
   progress_bar ${current_step} ${demux_steps}
 
   #--------INPUT CHECKS--------#
-
-  if [[ -z "${input_seqs}" || -z "${input_barcodes}" || -z "${output}" ]]; then
-    log_message "ERROR" "longairr demux" \
-      "Missing required arguments: all input and output parameters must be specified." \
-      "${log_file}"
-    exit 1
-  fi
 
   if [[ ! -f "${input_seqs}" ]]; then
     log_message "ERROR" "longairr demux" \
@@ -724,19 +739,15 @@ demux() {
   fi
 
   # Set up demux output- and intermediate directories
-  if [[ -d "${output}" ]]; then
-    demux_out="${output}sample_demux/"
-    demux_tmp="${output}sample_demux/tmp/"
+  local demux_out="${output%/}/sample_demux/"
+  local demux_tmp="${demux_out}tmp/"
 
-    mkdir -p "${demux_tmp}"
-  else
-    log_message "ERROR" "longairr demux" \
-      "Specified output path \"${output}\" is not a valid directory. Ensure the path exists and is writable." \
-      "${log_file}"
-    exit 1
-  fi
+  mkdir -p "${demux_tmp}"
 
   #--------FUNCTIONALITY-------#
+
+  local metadata_started_at
+  metadata_started_at=$(date -Iseconds)
 
   # Define file paths
   local fail_fasta="${demux_tmp}UDIs_primers-fail.fasta"
@@ -745,6 +756,13 @@ demux() {
   local udi_forward="${demux_tmp}UDIs_primers-pass.fasta"
   local udi_reverse="${demux_tmp}UDIs_rc_primers-pass.fasta"
   local udi_combined="${demux_tmp}combined_primers-pass.fasta"
+  local unmatched_fasta="${demux_tmp}UDIs_rc_primers-fail.fasta"
+
+  # Metadata values collected while split FASTA files are moved.
+  local metadata_counts_ready="TRUE"
+  local -a metadata_sample_ids=()
+  local -a metadata_sample_counts=()
+  local -a metadata_sample_fastas=()
 
   # Matches UDI (anchor) sequences and writes match into sequence header
   # NOTE: Find the reference for third-party software 'presto [MaskPrimers.py]' in '/vignette/software_references.md`
@@ -778,7 +796,12 @@ demux() {
   update_progress ${current_step} ${demux_steps}
 
   # Combine all matching reads
-  cat "${udi_forward}" "${udi_reverse}" >> "${udi_combined}"
+  cat "${udi_forward}" "${udi_reverse}" > "${udi_combined}" || {
+    log_message "ERROR" "longairr demux" \
+      "Failed to combine forward and reverse UDI matches." \
+      "${log_file}"
+    exit 1
+  }
   update_progress ${current_step} ${demux_steps}
 
   # Split reads by matching UDI/anchor
@@ -791,99 +814,183 @@ demux() {
   }
   update_progress ${current_step} ${demux_steps}
 
-  #-----SUBDIRS, VERBOSE and SUMMARY-----#
+  # Generate one subdirectory per demultiplexed sample.
+  # Metadata counting is non-fatal and does not change the generated FASTA files.
+  local -a split_fastas=( "${demux_out}"split*.fasta )
 
-  # Generate subdir for each output file after SplitSeq
-  # NOTE: Find the reference for third-party software 'seqkit' in '/vignette/software_references.md`
-  for file in "${demux_out}"/split*.fasta; do
-    # Extract UDI from filename
-    udi_dir=$(basename "${file}" | cut -d'-' -f2 | cut -d'.' -f1)
-    udi_dir_name="${demux_out}/${udi_dir}"
+  if [[ ! -e "${split_fastas[0]}" ]]; then
+    log_message "ERROR" "longairr demux" \
+      "SplitSeq completed, but no demultiplexed sample FASTA files were found." \
+      "${log_file}"
+    exit 1
+  fi
+
+  local file
+  for file in "${split_fastas[@]}"; do
+    local split_filename
+    local udi_dir
+    local udi_dir_name
+    local sample_fasta
+    local udi_num
+
+    split_filename=$(basename "${file}")
+
+    # Expected SplitSeq output: split_UDI-SAMPLE.fasta
+    udi_dir="${split_filename#split_UDI-}"
+    udi_dir="${udi_dir%.fasta}"
+
+    if [[ -z "${udi_dir}" || "${udi_dir}" == "${split_filename}" ]]; then
+      log_message "ERROR" "longairr demux" \
+        "Could not derive a sample identifier from SplitSeq output \"${split_filename}\"." \
+        "${log_file}"
+      exit 1
+    fi
+
+    udi_dir_name="${demux_out}${udi_dir}"
+    sample_fasta="${udi_dir_name}/${split_filename}"
+
     mkdir -p "${udi_dir_name}"
 
-    # Populate summary file with UDI-specific stats
-    if [[ "${read_summary}" == "TRUE" ]]; then
+    udi_num=$(seqkit stats -T "${file}" | awk 'NR==2 {print $4}') || {
+      metadata_counts_ready="FALSE"
+      log_message "WARNING" "longairr demux" \
+        "Demux completed, but the read count for sample \"${udi_dir}\" could not be computed." \
+        "${log_file}"
+    }
 
-      # Define summary file paths
-      local summary_path="${output}"
-      local summary_name="summary.tsv"
-      local summary_file="${summary_path}/${summary_name}"
+    mv "${file}" "${sample_fasta}" || {
+      log_message "ERROR" "longairr demux" \
+        "Failed to move demultiplexed FASTA for sample \"${udi_dir}\"." \
+        "${log_file}"
+      exit 1
+    }
 
-      local combined_num
-      local udi_num
-      local timestamp
-
-      combined_num=$(seqkit stats -T "${udi_combined}" | awk 'NR==2 {print $4}') || {
-        log_message "ERROR" "longairr demux" \
-          "Failed computing the number of reads with valid UDI-match" \
-          "${log_file}"
-        exit 1
-      }
-      udi_num=$(seqkit stats -T "${file}" | awk 'NR==2 {print $4}') || {
-        log_message "ERROR" "longairr demux" \
-          "Failed computing the number of reads per UDI" \
-          "${log_file}"
-        exit 1
-      }
-      timestamp=$(date +"%Y-%m-%d %H:%M:%S")
-
-      # Initialize summary file (if it doesnt exist yet)
-      if [[ ! -f "${summary_file}" ]]; then
-        echo -e "LongAIRR version: ${LONGAIRR_VERSION}" > "${summary_file}"
-        echo -e "Sample: ${summary_path}" >> "${summary_file}"
-        echo -e "Step\tPathInfo\tDate\tInputReads\tOutputReads\tPercentRetained\tInputDescription\tOutputDescription" >> "${summary_file}"
-      fi
-      echo -e "Demux\t${udi_dir}\t${timestamp}\t${combined_num}\t${udi_num}\t \t total # reads with valid UDI-match \t # of reads with this UDI" >> "${summary_file}"
-    fi
-    # Move UDI.fasta to corresponding UDI directory
-    mv "${file}" "${udi_dir_name}/"
+    metadata_sample_ids+=("${udi_dir}")
+    metadata_sample_counts+=("${udi_num}")
+    metadata_sample_fastas+=("${sample_fasta}")
   done
   update_progress ${current_step} ${demux_steps}
 
-  #-----VERBOSE and SUMMARY-----#
+  local metadata_finished_at
+  metadata_finished_at=$(date -Iseconds)
 
-  # NOTE: Find the reference for third-party software and 'seqkit' in '/vignette/software_references.md`
-  if [[ "${read_summary}" == "TRUE" ]]; then
+  #------STRUCTURED METADATA----#
 
-    # Define summary file paths
-    local summary_path="${output}"
-    local summary_name="summary.tsv"
-    local summary_file="${summary_path}/${summary_name}"
+  # Metadata generation is non-fatal.
+  local metadata_input_reads
+  local metadata_forward_matched_reads
+  local metadata_reverse_matched_reads
+  local metadata_matched_reads
+  local metadata_unmatched_reads
+  local metadata_sample_count
+  local resolved_run_root
 
-    local filtered_fasta="${output}/filter_qc/"
+  metadata_input_reads=$(seqkit stats -T "${input_seqs}" | awk 'NR==2 {print $4}') || {
+    metadata_counts_ready="FALSE"
+  }
 
-    local combined_num
-    local filtered_num
-    local demux_rate
+  metadata_forward_matched_reads=$(seqkit stats -T "${udi_forward}" | awk 'NR==2 {print $4}') || {
+    metadata_counts_ready="FALSE"
+  }
 
-    combined_num=$(seqkit stats -T "${udi_combined}" | awk 'NR==2 {print $4}') || {
-      log_message "ERROR" "longairr demux" \
-        "Failed to compute 'number of reads with valid UDI-match (demux-rate)'" \
+  metadata_reverse_matched_reads=$(seqkit stats -T "${udi_reverse}" | awk 'NR==2 {print $4}') || {
+    metadata_counts_ready="FALSE"
+  }
+
+  metadata_matched_reads=$(seqkit stats -T "${udi_combined}" | awk 'NR==2 {print $4}') || {
+    metadata_counts_ready="FALSE"
+  }
+
+  metadata_unmatched_reads=$(seqkit stats -T "${unmatched_fasta}" | awk 'NR==2 {print $4}') || {
+    metadata_counts_ready="FALSE"
+  }
+
+  metadata_sample_count=${#metadata_sample_ids[@]}
+
+  if [[ "${metadata_counts_ready}" == "TRUE" ]]; then
+    if resolved_run_root=$(resolve_longairr_run_root \
+      "${output}" \
+      "${requested_run_root}" \
+      "${LONGAIRR_VERSION}" \
+      2>> "${log_file}"); then
+
+      longairr_metadata.py write-module \
+        --run-root "${resolved_run_root}" \
+        --module demux \
+        --longairr-version "${LONGAIRR_VERSION}" \
+        --record-id run \
+        --scope-type run \
+        --status success \
+        --started-at "${metadata_started_at}" \
+        --finished-at "${metadata_finished_at}" \
+        --parameter "window_length=${window_length}" \
+        --parameter "anchor_error=${max_error}" \
+        --count "input_reads=${metadata_input_reads}" \
+        --count "forward_matched_reads=${metadata_forward_matched_reads}" \
+        --count "reverse_matched_reads=${metadata_reverse_matched_reads}" \
+        --count "matched_reads=${metadata_matched_reads}" \
+        --count "unmatched_reads=${metadata_unmatched_reads}" \
+        --count "sample_count=${metadata_sample_count}" \
+        --file "input_barcodes=${input_barcodes}" \
+        --file "input_sequences=${input_seqs}" \
+        --file "forward_failed_fasta=${fail_fasta}" \
+        --file "reverse_complement_fasta=${rc_seqs}" \
+        --file "forward_matched_fasta=${udi_forward}" \
+        --file "reverse_matched_fasta=${udi_reverse}" \
+        --file "matched_fasta=${udi_combined}" \
+        --file "unmatched_fasta=${unmatched_fasta}" \
+        --file "log=${log_file}" \
+        >> "${log_file}" 2>&1 || {
+          log_message "WARNING" "longairr demux" \
+            "Demux completed, but writing run-level structured metadata failed." \
+            "${log_file}"
+        }
+
+      local metadata_index
+      for metadata_index in "${!metadata_sample_ids[@]}"; do
+        longairr_metadata.py write-module \
+          --run-root "${resolved_run_root}" \
+          --module demux \
+          --longairr-version "${LONGAIRR_VERSION}" \
+          --record-id "${metadata_sample_ids[metadata_index]}" \
+          --scope-type sample \
+          --sample "${metadata_sample_ids[metadata_index]}" \
+          --status success \
+          --started-at "${metadata_finished_at}" \
+          --finished-at "${metadata_finished_at}" \
+          --count "assigned_reads=${metadata_sample_counts[metadata_index]}" \
+          --file "sample_fasta=${metadata_sample_fastas[metadata_index]}" \
+          >> "${log_file}" 2>&1 || {
+            log_message "WARNING" "longairr demux" \
+              "Demux completed, but writing structured metadata for sample \"${metadata_sample_ids[metadata_index]}\" failed." \
+              "${log_file}"
+          }
+      done
+
+    else
+      log_message "WARNING" "longairr demux" \
+        "Demux completed, but the LongAIRR run root could not be initialized." \
         "${log_file}"
-      exit 1
-    }
-    filtered_num=$(seqkit stats -T "${filtered_fasta}"*.fasta | awk 'NR==2 {print $4}') || {
-      log_message "ERROR" "longairr demux" \
-        "Failed to compute the 'number of filtered reads (demux-rate)'" \
-        "${log_file}"
-      exit 1
-    }
-    demux_rate=$(( combined_num * 100 / filtered_num ))
-    timestamp=$(date +"%Y-%m-%d %H:%M:%S")
-
-    # Initialize summary file (if it doesnt exist yet)
-    if [[ ! -f "${summary_file}" ]]; then
-      echo -e "LongAIRR version: ${LONGAIRR_VERSION}" > "${summary_file}"
-      echo -e "Sample: ${summary_path}" >> "${summary_file}"
-      echo -e "Step\tPathInfo\tDate\tInputReads\tOutputReads\tPercentRetained\tInputDescription\tOutputDescription" >> "{$summary_file}"
     fi
-      echo >> "${summary_file}"
-      echo -e ">DemuxRate\t\t${timestamp}\t${filtered_num}\t${combined_num}\t${demux_rate}%\t # of filtered reads \t total # reads with valid UDI-match" >> "${summary_file}"
+  else
+    log_message "WARNING" "longairr demux" \
+      "Demux completed, but structured metadata was not written because one or more read counts could not be computed." \
+      "${log_file}"
   fi
   update_progress ${current_step} ${demux_steps}
 
   # Info messages
   if [[ "${verbose}" == "TRUE" ]]; then
+    local identified_sample_tags=""
+
+    #creates text label
+    printf -v identified_sample_tags '%s, ' "${metadata_sample_ids[@]}"
+    identified_sample_tags="${identified_sample_tags%, }"
+
+    log_message "INFO" "longairr demux" \
+      "Identified sample tags: ${identified_sample_tags}" \
+      "${log_file}"
+
     log_message "INFO" "longairr demux" \
       "Output directory: ${demux_out}" \
       "${log_file}"

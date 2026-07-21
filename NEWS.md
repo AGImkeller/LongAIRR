@@ -1,3 +1,15 @@
+# LongAIRR 1.2.2-devel
+
+Introducing new metadata scheme into 'longairr demux'. New reporting scheme is
+now also available for multiplexed bulk datasets.
+
+# LongAIRR 1.2.1-devel
+
+Minor fix in the HTML report to keep provided file-links operational after
+moving or copying the results-root. Introducing a 'relocated' flag.
+Original file path stays available, while files in the new location are linked
+in the background to be able to access them from the HTML-report.
+
 # LongAIRR 1.2.0-devel
 
 Introducing the 'longairr report' module, replacing the per-module-summary logic.

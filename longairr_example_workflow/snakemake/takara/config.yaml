@@ -24,8 +24,8 @@
 
 #-----longairr filter parameters------------------#
 FILTER_MIN_QUAL: 17             # --min-qual:        default: -1 (no quality filtering)
-FILTER_MINL: 400                # --minl:            default: -1 (no length filtering)
-FILTER_MAXL: 2500               # --maxl:            default: -1 (no length filtering)
+FILTER_MINL: 200                # --minl:            default: -1 (no length filtering)
+FILTER_MAXL: 4000               # --maxl:            default: -1 (no length filtering)
 
 
 #-----longairr demux parameters---------------------------#
@@ -48,15 +48,15 @@ COLLAPSE_AF: True                    # --adaptive-filter: default: TRUE
 COLLAPSE_GROUP_FIELD: "UMI"          # --group-field:     valid: "UMI" (Bulk)
 COLLAPSE_AF_MIN_N: 5                 # --filter-min-size: default: 100
 COLLAPSE_AF_BIN: 100                 # --bin-size:        default: 100
-COLLAPSE_AF_MARGIN: 0.1              # --peak-margin:     default: 0.10
+COLLAPSE_AF_MARGIN: 0.05              # --peak-margin:     default: 0.10
 
 COLLAPSE_CONSGAP: 0.5                # --cons-gap:        default: 0.5
 COLLAPSE_CONSERROR: 0.2              # --cons-error:      default: 0.2
 
 COLLAPSE_N_SUBSAMPLE: 750            # --n-subsample:     default: 10000
-COLLAPSE_N_CHUNK: 30                 # --n-per-chunk:     default: 50
+COLLAPSE_N_CHUNK: 75                 # --n-per-chunk:     default: 50
 COLLAPSE_SEED: 1                     # --seed:            default: 1
-COLLAPSE_JOBS: 5                     # --cjobs:           default: 6
+COLLAPSE_JOBS: 16                     # --cjobs:           default: 6
 
 
 #-----longairr seqtag parameters----------------#
@@ -108,8 +108,8 @@ OUTPUT: "/home/user123/path/to/longairr_results/"       # outdir
 
 # specify samples (match with IDS in FASTA headers for every UDI-anchor barcode from DEMUX_UID_FASTA)
 samples:
-  - UDI6
-  - UDI20
+  - UID6
+  - UID20
 
 #-------------------------misc---------------------------#
 # Specify 'True' if you want to copy the used config.yaml to generate the output data into the 'OUTPUT' directory

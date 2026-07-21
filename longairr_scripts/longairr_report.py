@@ -549,6 +549,46 @@ def _filter_rows(record: ModuleRecord, run_root: Path) -> list[SummaryRow]:
     return rows
 
 
+
+def _demux_rows(
+    record: ModuleRecord,
+    run_root: Path,
+    demux_run: ModuleRecord | None = None,
+) -> list[SummaryRow]:
+    rows: list[SummaryRow] = []
+
+    if record.scope_type == "run":
+        _add_transition(
+            rows,
+            record=record,
+            step="Demux",
+            path_info=_main_path_info(record, run_root),
+            input_count=_count(record, "input_reads"),
+            output_count=_count(record, "matched_reads"),
+            input_description="Filtered reads",
+            output_description="Reads with a valid UDI assignment",
+        )
+        return rows
+
+    if record.scope_type == "sample" and record.sample:
+        _add_transition(
+            rows,
+            record=record,
+            step="Demux",
+            path_info=record.sample,
+            input_count=(
+                _count(demux_run, "matched_reads")
+                if demux_run is not None
+                else None
+            ),
+            output_count=_count(record, "assigned_reads"),
+            input_description="Reads with a valid UDI assignment",
+            output_description=f"Reads assigned to {record.sample}",
+        )
+
+    return rows
+
+
 def _collapse_rows(record: ModuleRecord) -> list[SummaryRow]:
     rows: list[SummaryRow] = []
     library = str(record.parameters.get("library", "")).lower()
@@ -737,22 +777,70 @@ def _airr_rows(record: ModuleRecord) -> list[SummaryRow]:
     return rows
 
 
+
+def _sample_names(model: ReportModel) -> list[str]:
+    return sorted(
+        {
+            record.sample
+            for record in model.records
+            if record.sample is not None
+        }
+    )
+
+
+def _summary_rows_for_record(
+    model: ReportModel,
+    record: ModuleRecord,
+    demux_run: ModuleRecord | None,
+) -> list[SummaryRow]:
+    if record.module == "filter":
+        return _filter_rows(record, model.run_root)
+    if record.module == "demux":
+        return _demux_rows(record, model.run_root, demux_run)
+    if record.module == "collapse":
+        return _collapse_rows(record)
+    if record.module == "seqtag":
+        return _seqtag_rows(record, model.run_root)
+    if record.module == "airr":
+        return _airr_rows(record)
+    return []
+
+
 # Define order of rows presented in summary.tsv
+# Build deterministic run-level rows followed by complete sample blocks
 def build_summary_rows(model: ReportModel) -> list[SummaryRow]:
 
     rows: list[SummaryRow] = []
+    demux_run = _find_record(model, "demux", scope_type="run")
+    sample_names = _sample_names(model)
 
+    # Spatial and other non-sample workflows keep the established module order
+    if not sample_names:
+        for record in model.records:
+            rows.extend(_summary_rows_for_record(model, record, demux_run))
+        return rows
+
+    # Bulk workflows begin with all run-level records, normally filter and demux
     for record in model.records:
-        if record.module == "filter":
-            rows.extend(_filter_rows(record, model.run_root))
-        elif record.module == "collapse":
-            rows.extend(_collapse_rows(record))
-        elif record.module == "seqtag":
-            rows.extend(_seqtag_rows(record, model.run_root))
-        elif record.module == "airr":
-            rows.extend(_airr_rows(record))
+        if record.sample is None:
+            rows.extend(_summary_rows_for_record(model, record, demux_run))
+
+    # Append one complete downstream block per sample
+    for sample in sample_names:
+        sample_records = sorted(
+            [
+                record
+                for record in model.records
+                if record.sample == sample
+            ],
+            key=_record_sort_key,
+        )
+        for record in sample_records:
+            rows.extend(_summary_rows_for_record(model, record, demux_run))
 
     return rows
+
+
 
 
 def _warn_if_not_nonincreasing(
@@ -828,8 +916,8 @@ def _seqtag_split_count(record: ModuleRecord, locus: str) -> int | None:
 
 # Validity check
 # Warnings if counts passing from one module to another are inconsistent
+# Add non-fatal warnings for logically inconsistent count chains
 def validate_count_relationships(model: ReportModel) -> None:
-    """Add non-fatal warnings for logically inconsistent count chains."""
 
     for record in model.records:
         if record.module == "filter":
@@ -838,6 +926,45 @@ def validate_count_relationships(model: ReportModel) -> None:
                 record,
                 ("input_reads", "filtered_reads"),
             )
+
+        elif record.module == "demux":
+            if record.scope_type == "run":
+                _warn_if_not_nonincreasing(
+                    model,
+                    record,
+                    ("input_reads", "matched_reads"),
+                )
+
+                forward = _count(record, "forward_matched_reads")
+                reverse = _count(record, "reverse_matched_reads")
+                matched = _count(record, "matched_reads")
+                unmatched = _count(record, "unmatched_reads")
+                input_reads = _count(record, "input_reads")
+
+                if (
+                    forward is not None
+                    and reverse is not None
+                    and matched is not None
+                    and forward + reverse != matched
+                ):
+                    model.warnings.append(
+                        f"demux/{record.record_id}: forward_matched_reads + "
+                        f"reverse_matched_reads ({forward + reverse}) does not "
+                        f"equal matched_reads ({matched})."
+                    )
+
+                if (
+                    input_reads is not None
+                    and matched is not None
+                    and unmatched is not None
+                    and matched + unmatched != input_reads
+                ):
+                    model.warnings.append(
+                        f"demux/{record.record_id}: matched_reads + "
+                        f"unmatched_reads ({matched + unmatched}) does not "
+                        f"equal input_reads ({input_reads})."
+                    )
+
         elif record.module == "collapse":
             _warn_if_not_nonincreasing(
                 model,
@@ -850,6 +977,7 @@ def validate_count_relationships(model: ReportModel) -> None:
                     "consensus_sequences",
                 ),
             )
+
         elif record.module == "seqtag":
             _warn_if_not_nonincreasing(
                 model,
@@ -886,6 +1014,7 @@ def validate_count_relationships(model: ReportModel) -> None:
                     f"sum to {sum(split_counts)}, but matched_sequences is "
                     f"{matched}."
                 )
+
         elif record.module == "airr":
             _warn_if_not_nonincreasing(
                 model,
@@ -899,8 +1028,18 @@ def validate_count_relationships(model: ReportModel) -> None:
             )
 
     filter_run = _find_record(model, "filter", scope_type="run")
+    demux_run = _find_record(model, "demux", scope_type="run")
     collapse_run = _find_record(model, "collapse", scope_type="run")
     seqtag_run = _find_record(model, "seqtag", scope_type="run")
+
+    if filter_run and demux_run:
+        _warn_mismatch(
+            model,
+            "filter/run filtered_reads",
+            _count(filter_run, "filtered_reads"),
+            "demux/run input_reads",
+            _count(demux_run, "input_reads"),
+        )
 
     if filter_run and collapse_run:
         _warn_mismatch(
@@ -919,6 +1058,115 @@ def validate_count_relationships(model: ReportModel) -> None:
             "seqtag/run input_sequences",
             _count(seqtag_run, "input_sequences"),
         )
+
+    demux_samples = sorted(
+        [
+            record
+            for record in model.records_for("demux")
+            if record.scope_type == "sample" and record.sample
+        ],
+        key=_record_sort_key,
+    )
+
+    # Warning in the report when downstream sample names do not match the sample tags
+    # generated during longairr demux
+    demux_sample_names = {
+        record.sample
+        for record in demux_samples
+        if record.sample
+    }
+
+    if demux_sample_names:
+        unexpected_downstream_samples: dict[str, set[str]] = {}
+
+        for record in model.records:
+            if (
+                record.module not in {"collapse", "seqtag", "airr"}
+                or not record.sample
+                or record.sample in demux_sample_names
+            ):
+                continue
+
+            unexpected_downstream_samples.setdefault(
+                record.sample,
+                set(),
+            ).add(record.module)
+
+        expected_samples = ", ".join(sorted(demux_sample_names))
+
+        for sample in sorted(unexpected_downstream_samples):
+            modules = ", ".join(
+                sorted(unexpected_downstream_samples[sample])
+            )
+            model.warnings.append(
+                f"Downstream sample '{sample}' used by {modules} was not "
+                f"found in demux sample metadata. Expected one of: "
+                f"{expected_samples}."
+            )
+
+    if demux_run:
+        matched_reads = _count(demux_run, "matched_reads")
+        sample_count = _count(demux_run, "sample_count")
+        assigned_values = [
+            _count(record, "assigned_reads")
+            for record in demux_samples
+        ]
+        available_assigned = [
+            value
+            for value in assigned_values
+            if value is not None
+        ]
+
+        if sample_count is not None and sample_count != len(demux_samples):
+            model.warnings.append(
+                f"demux/run: sample_count is {sample_count}, but "
+                f"{len(demux_samples)} sample metadata record(s) were found."
+            )
+
+        if (
+            matched_reads is not None
+            and len(available_assigned) == len(demux_samples)
+            and sum(available_assigned) != matched_reads
+        ):
+            model.warnings.append(
+                "demux/run: sample assigned read counts sum to "
+                f"{sum(available_assigned)}, but matched_reads is "
+                f"{matched_reads}."
+            )
+
+    for collapse_record in model.records_for("collapse"):
+        if collapse_record.scope_type != "sample" or not collapse_record.sample:
+            continue
+
+        demux_sample = _find_record(
+            model,
+            "demux",
+            scope_type="sample",
+            sample=collapse_record.sample,
+        )
+        if demux_sample:
+            _warn_mismatch(
+                model,
+                f"demux/{demux_sample.record_id} assigned_reads",
+                _count(demux_sample, "assigned_reads"),
+                f"collapse/{collapse_record.record_id} input_reads",
+                _count(collapse_record, "input_reads"),
+            )
+
+        seqtag_sample = _find_record(
+            model,
+            "seqtag",
+            scope_type="sample",
+            sample=collapse_record.sample,
+        )
+        if seqtag_sample:
+            _warn_mismatch(
+                model,
+                f"collapse/{collapse_record.record_id} consensus_sequences",
+                _count(collapse_record, "consensus_sequences"),
+                f"seqtag/{seqtag_sample.record_id} input_sequences",
+                _count(seqtag_sample, "input_sequences"),
+            )
 
     for airr_record in model.records_for("airr"):
         if airr_record.scope_type == "locus":
@@ -956,6 +1204,8 @@ def validate_count_relationships(model: ReportModel) -> None:
             ),
             _count(airr_record, "input_sequences"),
         )
+
+
 
 
 def _atomic_write_summary(
@@ -1082,26 +1332,75 @@ def _record_scope_label(record: ModuleRecord) -> str:
     return record.scope_type
 
 
-def _record_transition(record: ModuleRecord) -> tuple[int | None, int | None, str]:
+
+def _record_transition(
+    record: ModuleRecord,
+    model: ReportModel | None = None,
+) -> tuple[int | None, int | None, str]:
     if record.module == "filter":
-        return _count(record, "input_reads"), _count(record, "filtered_reads"), "Filtered reads"
+        return (
+            _count(record, "input_reads"),
+            _count(record, "filtered_reads"),
+            "Filtered reads",
+        )
+
+    if record.module == "demux":
+        if record.scope_type == "run":
+            return (
+                _count(record, "input_reads"),
+                _count(record, "matched_reads"),
+                "Valid UDI matches",
+            )
+
+        demux_run = (
+            _find_record(model, "demux", scope_type="run")
+            if model is not None
+            else None
+        )
+        return (
+            _count(demux_run, "matched_reads") if demux_run else None,
+            _count(record, "assigned_reads"),
+            "Assigned sample reads",
+        )
+
     if record.module == "collapse":
-        return _count(record, "input_reads"), _count(record, "consensus_sequences"), "Consensus sequences"
+        return (
+            _count(record, "input_reads"),
+            _count(record, "consensus_sequences"),
+            "Consensus sequences",
+        )
+
     if record.module == "seqtag":
-        return _count(record, "input_sequences"), _count(record, "matched_sequences"), "Seqtag matches"
+        return (
+            _count(record, "input_sequences"),
+            _count(record, "matched_sequences"),
+            "Seqtag matches",
+        )
+
     if record.module == "airr":
         productive = _count(record, "productive_sequences")
         if productive is not None:
-            return _count(record, "input_sequences"), productive, "Productive sequences"
-        return _count(record, "input_sequences"), _count(record, "airr_sequences"), "Valid AIRR sequences"
+            return (
+                _count(record, "input_sequences"),
+                productive,
+                "Productive sequences",
+            )
+        return (
+            _count(record, "input_sequences"),
+            _count(record, "airr_sequences"),
+            "Valid AIRR sequences",
+        )
+
     values = list(record.counts.values())
     if not values:
         return None, None, "Output"
     return values[0], values[-1], "Output"
 
+
+
 # file-paths helpers
+# Return an absolute normalized path without requiring it to exist.
 def _normalized_path(path: Path) -> Path:
-    """Return an absolute normalized path without requiring it to exist."""
 
     try:
         return path.resolve(strict=False)
@@ -1135,12 +1434,12 @@ def _relative_file_href(target: Path, report_path: Path) -> str:
     return quote(Path(relative).as_posix(), safe="/:@")
 
 
+# Resolve a metadata path against the original and current run roots.
 def _resolve_file_reference(
     value: str,
     model: ReportModel,
     report_path: Path,
 ) -> FileReference:
-    """Resolve a metadata path against the original and current run roots."""
 
     original_root = _original_run_root(model)
     recorded = Path(value).expanduser()
@@ -1218,17 +1517,69 @@ def _sum_count(records: Sequence[ModuleRecord], key: str) -> int | None:
     return sum(available) if available else None
 
 
+
+def _module_records_for_aggregation(
+    model: ReportModel,
+    module: str,
+) -> list[ModuleRecord]:
+    run_records = [
+        record
+        for record in model.records_for(module)
+        if record.scope_type == "run"
+    ]
+    if run_records:
+        return run_records
+
+    return [
+        record
+        for record in model.records_for(module)
+        if record.scope_type == "sample"
+    ]
+
+
+def _aggregate_module_count(
+    model: ReportModel,
+    module: str,
+    key: str,
+) -> int | None:
+    return _sum_count(
+        _module_records_for_aggregation(model, module),
+        key,
+    )
+
+
+def _locus_count_totals(
+    records: Sequence[ModuleRecord],
+    key: str,
+) -> dict[str, int]:
+    totals: dict[str, int] = {}
+    for record in records:
+        if not record.locus:
+            continue
+        value = _count(record, key)
+        if value is None:
+            continue
+        totals[record.locus] = totals.get(record.locus, 0) + value
+    return totals
+
+
+
 def _overview_metrics(model: ReportModel) -> str:
     filter_record = _find_record(model, "filter", scope_type="run")
-    collapse_record = _find_record(model, "collapse", scope_type="run")
-    seqtag_record = _find_record(model, "seqtag", scope_type="run")
+    demux_record = _find_record(model, "demux", scope_type="run")
     airr_records = _locus_records(model)
     cards: list[str] = []
 
     if filter_record:
         raw = _count(filter_record, "input_reads")
         filtered = _count(filter_record, "filtered_reads")
-        cards.append(_metric_card("Input reads", raw, "Reads entering filtering"))
+        cards.append(
+            _metric_card(
+                "Input reads",
+                raw,
+                "Reads entering filtering",
+            )
+        )
         cards.append(
             _metric_card(
                 "Filtered reads",
@@ -1236,53 +1587,105 @@ def _overview_metrics(model: ReportModel) -> str:
                 f"{_format_rate(filtered, raw)} retained",
             )
         )
-    elif collapse_record:
+
+    elif demux_record:
         cards.append(
             _metric_card(
-                "Collapse input",
-                _count(collapse_record, "input_reads"),
-                "Reads entering collapse",
-            )
-        )
-    elif seqtag_record:
-        cards.append(
-            _metric_card(
-                "Seqtag input",
-                _count(seqtag_record, "input_sequences"),
-                "Sequences entering seqtag",
+                "Demux input",
+                _count(demux_record, "input_reads"),
+                "Reads entering demultiplexing",
             )
         )
 
-    if collapse_record:
-        consensus = _count(collapse_record, "consensus_sequences")
-        source = _count(collapse_record, "input_reads")
+    else:
+        collapse_input = _aggregate_module_count(
+            model,
+            "collapse",
+            "input_reads",
+        )
+        if collapse_input is not None:
+            cards.append(
+                _metric_card(
+                    "Collapse input",
+                    collapse_input,
+                    "Reads entering collapse",
+                )
+            )
+        else:
+            seqtag_input = _aggregate_module_count(
+                model,
+                "seqtag",
+                "input_sequences",
+            )
+            if seqtag_input is not None:
+                cards.append(
+                    _metric_card(
+                        "Seqtag input",
+                        seqtag_input,
+                        "Sequences entering seqtag",
+                    )
+                )
+
+    if demux_record:
+        matched = _count(demux_record, "matched_reads")
+        source = _count(demux_record, "input_reads")
+        cards.append(
+            _metric_card(
+                "Demultiplexed reads",
+                matched,
+                f"{_format_rate(matched, source)} with valid UDI assignment",
+            )
+        )
+        cards.append(
+            _metric_card(
+                "Samples",
+                _count(demux_record, "sample_count"),
+                "Demultiplexed sample outputs",
+            )
+        )
+
+    consensus = _aggregate_module_count(
+        model,
+        "collapse",
+        "consensus_sequences",
+    )
+    collapse_input = _aggregate_module_count(
+        model,
+        "collapse",
+        "input_reads",
+    )
+    if consensus is not None:
         cards.append(
             _metric_card(
                 "Consensus sequences",
                 consensus,
-                f"{_format_rate(consensus, source)} of collapse input",
+                f"{_format_rate(consensus, collapse_input)} of collapse input",
             )
         )
 
-    if seqtag_record:
-        matched = _count(seqtag_record, "matched_sequences")
-        source = _count(seqtag_record, "input_sequences")
+    seqtag_matched = _aggregate_module_count(
+        model,
+        "seqtag",
+        "matched_sequences",
+    )
+    seqtag_input = _aggregate_module_count(
+        model,
+        "seqtag",
+        "input_sequences",
+    )
+    if seqtag_matched is not None:
         cards.append(
             _metric_card(
                 "Seqtag matches",
-                matched,
-                f"{_format_rate(matched, source)} of seqtag input",
+                seqtag_matched,
+                f"{_format_rate(seqtag_matched, seqtag_input)} of seqtag input",
             )
         )
 
     productive = _sum_count(airr_records, "productive_sequences")
     if productive is not None:
         airr_input = _sum_count(airr_records, "input_sequences")
-        seqtag_matched = (
-            _count(seqtag_record, "matched_sequences")
-            if seqtag_record
-            else None
-        )
+
         if seqtag_matched is not None and airr_input == seqtag_matched:
             denominator = seqtag_matched
             denominator_label = "seqtag matches"
@@ -1290,16 +1693,31 @@ def _overview_metrics(model: ReportModel) -> str:
             denominator = airr_input
             denominator_label = "available AIRR input"
 
-        breakdown = " + ".join(
-            f"{_count(record, 'productive_sequences'):,} "
-            f"{_locus_label(record.locus or record.record_id)}"
-            for record in airr_records
-            if _count(record, "productive_sequences") is not None
+        productive_by_locus = _locus_count_totals(
+            airr_records,
+            "productive_sequences",
         )
+        breakdown = " + ".join(
+            f"{productive_by_locus[locus]:,} {_locus_label(locus)}"
+            for locus in sorted(
+                productive_by_locus,
+                key=lambda value: (
+                    LOCUS_ORDER.get(value, 100),
+                    value,
+                ),
+            )
+        )
+
         detail = f"{_format_rate(productive, denominator)} of {denominator_label}"
         if breakdown:
             detail += f" · {breakdown}"
-        cards.append(_metric_card("Productive AIRR", productive, detail))
+        cards.append(
+            _metric_card(
+                "Productive AIRR",
+                productive,
+                detail,
+            )
+        )
 
     if model.records:
         total = sum(record.duration_seconds or 0.0 for record in model.records)
@@ -1314,6 +1732,8 @@ def _overview_metrics(model: ReportModel) -> str:
     if not cards:
         return '<div class="empty">No overview metrics available.</div>'
     return '<div class="metric-grid">' + ''.join(cards) + '</div>'
+
+
 
 
 def _status_badge(status: str) -> str:
@@ -1346,10 +1766,14 @@ def _warnings_section(model: ReportModel) -> str:
     )
 
 
+
 def _module_summary_table(model: ReportModel) -> str:
     rows: list[str] = []
     for record in model.records:
-        input_count, output_count, output_label = _record_transition(record)
+        input_count, output_count, output_label = _record_transition(
+            record,
+            model,
+        )
         rows.append(
             '<tr>'
             f'<td><strong>{_html(record.module.title())}</strong>'
@@ -1365,11 +1789,11 @@ def _module_summary_table(model: ReportModel) -> str:
             '</tr>'
         )
     if not rows:
-        rows.append('<tr><td colspan="8" class="empty">No module records found.</td></tr>')
+        rows.append(
+            '<tr><td colspan="8" class="empty">No module records found.</td></tr>'
+        )
     return (
         '<div class="table-wrap"><table><thead><tr>'
-        #'<th>Module</th><th>Scope</th><th>Status</th><th>Input</th>'
-        #'<th>Output</th><th>Retention</th><th>Runtime</th><th>Finished</th>'
         '<th>Module</th><th>Scope</th><th>Status</th>'
         '<th class="num">Input</th>'
         '<th class="num">Output</th>'
@@ -1377,7 +1801,6 @@ def _module_summary_table(model: ReportModel) -> str:
         '<th>Runtime</th><th>Finished</th>'
         '</tr></thead><tbody>' + ''.join(rows) + '</tbody></table></div>'
     )
-
 
 def _append_stage(
     stages: list[tuple[str, int, str]],
@@ -1394,69 +1817,105 @@ def _append_stage(
 
 def _read_retention_stages(model: ReportModel) -> list[tuple[str, int, str]]:
     filter_record = _find_record(model, "filter", scope_type="run")
-    collapse_record = _find_record(model, "collapse", scope_type="run")
+    demux_record = _find_record(model, "demux", scope_type="run")
+    collapse_records = _module_records_for_aggregation(model, "collapse")
     stages: list[tuple[str, int, str]] = []
 
     if filter_record:
-        _append_stage(stages, "Input reads", _count(filter_record, "input_reads"))
+        _append_stage(
+            stages,
+            "Input reads",
+            _count(filter_record, "input_reads"),
+        )
         _append_stage(
             stages,
             "Filtered reads",
             _count(filter_record, "filtered_reads"),
         )
 
-    if collapse_record:
-        collapse_input = _count(collapse_record, "input_reads")
-        if not stages or stages[-1][1] != collapse_input:
-            _append_stage(stages, "Collapse input", collapse_input)
+    if demux_record:
+        demux_input = _count(demux_record, "input_reads")
+        if not stages or stages[-1][1] != demux_input:
+            _append_stage(stages, "Demux input", demux_input)
         _append_stage(
             stages,
-            "SPBC/UMI annotated",
-            _count(collapse_record, "annotated_reads"),
+            "Demultiplexed reads",
+            _count(demux_record, "matched_reads"),
+        )
+
+    if collapse_records:
+        collapse_input = _sum_count(collapse_records, "input_reads")
+        if not stages or stages[-1][1] != collapse_input:
+            _append_stage(stages, "Collapse input", collapse_input)
+
+        libraries = {
+            str(record.parameters.get("library", "")).lower()
+            for record in collapse_records
+        }
+        annotation_label = (
+            "UMI annotated"
+            if libraries == {"bulk"}
+            else "SPBC/UMI annotated"
+        )
+
+        _append_stage(
+            stages,
+            annotation_label,
+            _sum_count(collapse_records, "annotated_reads"),
         )
         _append_stage(
             stages,
             "Fixed-length filtered",
-            _count(collapse_record, "length_filtered_reads"),
+            _sum_count(collapse_records, "length_filtered_reads"),
         )
         _append_stage(
             stages,
             "AF-retained group reads",
-            _count(collapse_record, "retained_group_reads"),
+            _sum_count(collapse_records, "retained_group_reads"),
         )
 
     return stages
 
 
 def _yield_retention_stages(model: ReportModel) -> list[tuple[str, int, str]]:
-    collapse_record = _find_record(model, "collapse", scope_type="run")
-    seqtag_record = _find_record(model, "seqtag", scope_type="run")
+    collapse_records = _module_records_for_aggregation(model, "collapse")
+    seqtag_records = _module_records_for_aggregation(model, "seqtag")
     airr_records = _locus_records(model)
     stages: list[tuple[str, int, str]] = []
 
-    if collapse_record:
+    if collapse_records:
         _append_stage(
             stages,
             "Consensus sequences",
-            _count(collapse_record, "consensus_sequences"),
+            _sum_count(collapse_records, "consensus_sequences"),
         )
 
-    if seqtag_record:
-        seqtag_input = _count(seqtag_record, "input_sequences")
+    if seqtag_records:
+        seqtag_input = _sum_count(seqtag_records, "input_sequences")
         if not stages or stages[-1][1] != seqtag_input:
             _append_stage(stages, "Seqtag input", seqtag_input)
         _append_stage(
             stages,
             "Seqtag matches",
-            _count(seqtag_record, "matched_sequences"),
+            _sum_count(seqtag_records, "matched_sequences"),
         )
 
     if airr_records:
         airr_input = _sum_count(airr_records, "input_sequences")
         if not stages or stages[-1][1] != airr_input:
             loci = ", ".join(
-                _locus_label(record.locus or record.record_id)
-                for record in airr_records
+                _locus_label(locus)
+                for locus in sorted(
+                    {
+                        record.locus
+                        for record in airr_records
+                        if record.locus
+                    },
+                    key=lambda value: (
+                        LOCUS_ORDER.get(value, 100),
+                        value,
+                    ),
+                )
             )
             _append_stage(
                 stages,
@@ -1528,6 +1987,56 @@ def _retention_panel(
     )
 
 
+
+def _demux_overview_section(model: ReportModel) -> str:
+    demux_run = _find_record(model, "demux", scope_type="run")
+    sample_records = sorted(
+        [
+            record
+            for record in model.records_for("demux")
+            if record.scope_type == "sample" and record.sample
+        ],
+        key=_record_sort_key,
+    )
+
+    if demux_run is None or not sample_records:
+        return ""
+
+    matched = _count(demux_run, "matched_reads")
+    input_reads = _count(demux_run, "input_reads")
+    rows: list[str] = []
+
+    for record in sample_records:
+        assigned = _count(record, "assigned_reads")
+        rows.append(
+            '<tr>'
+            f'<td><strong>{_html(record.sample)}</strong></td>'
+            f'<td class="num">{_html(_format_count(assigned))}</td>'
+            f'<td class="num">{_html(_format_rate(assigned, matched))}</td>'
+            f'<td class="num">{_html(_format_rate(assigned, input_reads))}</td>'
+            '</tr>'
+        )
+
+    table = (
+        '<div class="table-wrap"><table><thead><tr>'
+        '<th>Sample</th>'
+        '<th class="num">Assigned reads</th>'
+        '<th class="num">% of demultiplexed reads</th>'
+        '<th class="num">% of demux input</th>'
+        '</tr></thead><tbody>'
+        + ''.join(rows)
+        + '</tbody></table></div>'
+    )
+
+    return (
+        '<article class="section">'
+        '<h2>Demultiplexing overview</h2>'
+        '<p class="desc">Sample-level allocation of reads with a valid UDI '
+        'assignment</p>'
+        f'{table}</article>'
+    )
+
+
 def _summary_html_table(model: ReportModel) -> str:
     rows = build_summary_rows(model)
     body = ''.join(
@@ -1553,48 +2062,137 @@ def _summary_html_table(model: ReportModel) -> str:
     )
 
 
+
 def _locus_records(model: ReportModel) -> list[ModuleRecord]:
     return sorted(
-        [record for record in model.records_for("airr") if record.locus],
+        [
+            record
+            for record in model.records_for("airr")
+            if record.locus
+        ],
         key=lambda record: (
-            record.sample or "",
             LOCUS_ORDER.get(record.locus or "", 100),
             record.locus or "",
+            record.sample or "",
         ),
     )
 
 
+
+
+
+def _aggregate_airr_records(
+    records: Sequence[ModuleRecord],
+) -> dict[str, int | None]:
+    def total(key: str) -> int | None:
+        return _sum_count(records, key)
+
+    return {
+        "input_sequences": total("input_sequences"),
+        "airr_sequences": total("airr_sequences"),
+        "productive_sequences": total("productive_sequences"),
+        "productive_heavy_sequences": total(
+            "productive_heavy_sequences"
+        ),
+    }
+
+
+def _locus_table_row(
+    label: str,
+    source: int | None,
+    valid: int | None,
+    productive: int | None,
+    heavy: int | None,
+    *,
+    sample: str | None = None,
+) -> str:
+    sample_html = (
+        f'<div class="subtle">{_html(sample)}</div>'
+        if sample
+        else ""
+    )
+    return (
+        '<tr>'
+        f'<td><strong>{_html(label)}</strong>{sample_html}</td>'
+        f'<td class="num">{_html(_format_count(source))}</td>'
+        f'<td class="num">{_html(_format_count(valid))}</td>'
+        f'<td class="num">{_html(_format_rate(valid, source))}</td>'
+        f'<td class="num">{_html(_format_count(productive))}</td>'
+        f'<td class="num">{_html(_format_rate(productive, valid))}</td>'
+        f'<td class="num">{_html(_format_count(heavy))}</td>'
+        '</tr>'
+    )
+
+
+
 def _loci_table(model: ReportModel) -> str:
+    records = _locus_records(model)
     rows: list[str] = []
-    for record in _locus_records(model):
-        source = _count(record, "input_sequences")
-        valid = _count(record, "airr_sequences")
-        productive = _count(record, "productive_sequences")
-        heavy = _count(record, "productive_heavy_sequences")
-        label = _locus_label(record.locus or record.record_id)
-        sample_html = (
-            f'<div class="subtle">{_html(record.sample)}</div>'
-            if record.sample
-            else ""
+
+    if records and any(record.sample for record in records):
+        loci = sorted(
+            {
+                record.locus
+                for record in records
+                if record.locus
+            },
+            key=lambda value: (
+                LOCUS_ORDER.get(value, 100),
+                value,
+            ),
         )
-        rows.append(
-            '<tr>'
-            f'<td><strong>{_html(label)}</strong>{sample_html}</td>'
-            f'<td class="num">{_html(_format_count(source))}</td>'
-            f'<td class="num">{_html(_format_count(valid))}</td>'
-            f'<td class="num">{_html(_format_rate(valid, source))}</td>'
-            f'<td class="num">{_html(_format_count(productive))}</td>'
-            f'<td class="num">{_html(_format_rate(productive, valid))}</td>'
-            f'<td class="num">{_html(_format_count(heavy))}</td>'
-            '</tr>'
-        )
+
+        for locus in loci:
+            locus_records = [
+                record
+                for record in records
+                if record.locus == locus
+            ]
+            totals = _aggregate_airr_records(locus_records)
+            label = f"All samples · {_locus_label(locus)}"
+            rows.append(
+                _locus_table_row(
+                    label,
+                    totals["input_sequences"],
+                    totals["airr_sequences"],
+                    totals["productive_sequences"],
+                    totals["productive_heavy_sequences"],
+                )
+            )
+
+            for record in locus_records:
+                rows.append(
+                    _locus_table_row(
+                        _locus_label(locus),
+                        _count(record, "input_sequences"),
+                        _count(record, "airr_sequences"),
+                        _count(record, "productive_sequences"),
+                        _count(record, "productive_heavy_sequences"),
+                        sample=record.sample,
+                    )
+                )
+
+    else:
+        for record in records:
+            rows.append(
+                _locus_table_row(
+                    _locus_label(record.locus or record.record_id),
+                    _count(record, "input_sequences"),
+                    _count(record, "airr_sequences"),
+                    _count(record, "productive_sequences"),
+                    _count(record, "productive_heavy_sequences"),
+                    sample=record.sample,
+                )
+            )
+
     if not rows:
-        rows.append('<tr><td colspan="7" class="empty">No locus-level AIRR records available.</td></tr>')
+        rows.append(
+            '<tr><td colspan="7" class="empty">'
+            'No locus-level AIRR records available.</td></tr>'
+        )
+
     return (
         '<div class="table-wrap"><table><thead><tr>'
-        #'<th>Locus</th><th>Input</th><th>Valid AIRR</th>'
-        #'<th>Annotation rate</th><th>Productive</th>'
-        #'<th>Productive rate</th><th>Productive heavy</th>'
         '<th>Locus</th>'
         '<th class="num">Input</th>'
         '<th class="num">Valid AIRR</th>'
@@ -1606,23 +2204,29 @@ def _loci_table(model: ReportModel) -> str:
     )
 
 
+
+
+
 def _locus_outcomes_chart(model: ReportModel) -> str:
     records = _locus_records(model)
     if not records:
         return '<div class="empty">No locus outcome data available.</div>'
 
     chart_rows: list[str] = []
-    legend_classes: set[str] = set()
-    for record in records:
-        source = _count(record, "input_sequences")
-        valid = _count(record, "airr_sequences")
-        productive = _count(record, "productive_sequences")
-        heavy = _count(record, "productive_heavy_sequences")
+
+    def append_chart_row(
+        label: str,
+        source: int | None,
+        valid: int | None,
+        productive: int | None,
+        heavy: int | None,
+    ) -> None:
         if source is None or source <= 0 or valid is None:
-            continue
+            return
 
         unannotated = max(source - valid, 0)
         segments: list[tuple[str, int, str]] = []
+
         if productive is not None:
             nonproductive = max(valid - productive, 0)
             segments.extend([
@@ -1631,44 +2235,100 @@ def _locus_outcomes_chart(model: ReportModel) -> str:
             ])
         else:
             segments.append(("Valid AIRR", valid, "valid"))
+
         segments.append(("No valid V(D)J", unannotated, "unannotated"))
 
         segment_html: list[str] = []
         counts_html: list[str] = []
-        for label, value, css_class in segments:
-            legend_classes.add(css_class)
+
+        for segment_label, value, css_class in segments:
             width = max(0.0, min(100.0, value * 100.0 / source))
             segment_html.append(
                 f'<div class="outcome-segment {css_class}" '
                 f'style="width:{width:.4f}%" '
-                f'title="{_html(label)}: {value:,} ({width:.1f}%)"></div>'
+                f'title="{_html(segment_label)}: '
+                f'{value:,} ({width:.1f}%)"></div>'
             )
             counts_html.append(
                 f'<span><i class="legend-dot {css_class}"></i>'
-                f'{_html(label)}: <strong>{value:,}</strong></span>'
+                f'{_html(segment_label)}: '
+                f'<strong>{value:,}</strong></span>'
             )
 
-        label = _locus_label(record.locus or record.record_id)
-        if record.sample:
-            label = f"{record.sample} · {label}"
         heavy_html = (
-            f'<div class="subtle">Productive heavy-chain subset: {heavy:,}</div>'
+            '<div class="subtle">Productive heavy-chain subset: '
+            f'{heavy:,}</div>'
             if heavy is not None
             else ""
         )
+
         chart_rows.append(
             '<div class="outcome-row">'
             f'<div class="outcome-label"><strong>{_html(label)}</strong>'
-            f'<div class="subtle">Input: {source:,}</div>{heavy_html}</div>'
+            f'<div class="subtle">Input: {source:,}</div>'
+            f'{heavy_html}</div>'
             '<div class="outcome-main">'
-            '<div class="outcome-bar">' + ''.join(segment_html) + '</div>'
-            '<div class="outcome-counts">' + ''.join(counts_html) + '</div>'
-            '</div></div>'
+            '<div class="outcome-bar">'
+            + ''.join(segment_html)
+            + '</div>'
+            '<div class="outcome-counts">'
+            + ''.join(counts_html)
+            + '</div></div></div>'
         )
+
+    if any(record.sample for record in records):
+        loci = sorted(
+            {
+                record.locus
+                for record in records
+                if record.locus
+            },
+            key=lambda value: (
+                LOCUS_ORDER.get(value, 100),
+                value,
+            ),
+        )
+
+        for locus in loci:
+            locus_records = [
+                record
+                for record in records
+                if record.locus == locus
+            ]
+            totals = _aggregate_airr_records(locus_records)
+            append_chart_row(
+                f"All samples · {_locus_label(locus)}",
+                totals["input_sequences"],
+                totals["airr_sequences"],
+                totals["productive_sequences"],
+                totals["productive_heavy_sequences"],
+            )
+
+            for record in locus_records:
+                append_chart_row(
+                    f"{record.sample} · {_locus_label(locus)}",
+                    _count(record, "input_sequences"),
+                    _count(record, "airr_sequences"),
+                    _count(record, "productive_sequences"),
+                    _count(record, "productive_heavy_sequences"),
+                )
+
+    else:
+        for record in records:
+            append_chart_row(
+                _locus_label(record.locus or record.record_id),
+                _count(record, "input_sequences"),
+                _count(record, "airr_sequences"),
+                _count(record, "productive_sequences"),
+                _count(record, "productive_heavy_sequences"),
+            )
 
     if not chart_rows:
         return '<div class="empty">No complete locus outcome counts available.</div>'
+
     return '<div class="outcome-chart">' + ''.join(chart_rows) + '</div>'
+
+
 
 
 PARAMETER_FLAGS: dict[str, dict[str, str]] = {
@@ -1676,6 +2336,10 @@ PARAMETER_FLAGS: dict[str, dict[str, str]] = {
         "min_quality": "--min-qual",
         "min_length": "--minl",
         "max_length": "--maxl",
+    },
+    "demux": {
+        "window_length": "--window-length",
+        "anchor_error": "--anchor-error",
     },
     "collapse": {
         "library": "--library",
@@ -1773,6 +2437,21 @@ def _classify_file(record: ModuleRecord, key: str) -> str:
             return "outputs"
         if key in {"log", "nanoplot_report"}:
             return "diagnostics"
+    elif module == "demux":
+        if key in {"input_barcodes", "input_sequences"}:
+            return "inputs"
+        if key == "sample_fasta":
+            return "outputs"
+        if key in {"unmatched_fasta", "log"}:
+            return "diagnostics"
+        if key in {
+            "forward_failed_fasta",
+            "reverse_complement_fasta",
+            "forward_matched_fasta",
+            "reverse_matched_fasta",
+            "matched_fasta",
+        }:
+            return "intermediates"
     elif module == "collapse":
         if key in {
             "input_anchor",
@@ -1925,38 +2604,93 @@ def _counts_table(record: ModuleRecord) -> str:
     return _settings_table(rows, "No counts recorded.")
 
 
+
+def _record_detail_html(
+    model: ReportModel,
+    report_path: Path,
+    record: ModuleRecord,
+) -> str:
+    metadata_rows = [
+        ("Scope", dict(record.scope)),
+        ("Started at", record.started_at),
+        ("Finished at", record.finished_at),
+        ("Source JSON", str(record.source_path)),
+    ]
+
+    return (
+        '<details class="record-detail">'
+        '<summary>'
+        f'<span class="record-title">{_html(record.module.title())} · '
+        f'{_html(record.record_id)}</span>'
+        f'<span class="record-scope">{_html(_record_scope_label(record))}</span>'
+        f'{_status_badge(record.status)}'
+        f'<span class="record-runtime">'
+        f'{_html(_format_duration(record.duration_seconds))}</span>'
+        '</summary>'
+        '<div class="record-body">'
+        '<div class="detail-grid">'
+        f'<section><h4>Counts</h4>{_counts_table(record)}</section>'
+        f'{_parameter_sections(record)}'
+        '</div>'
+        '<div class="file-section-grid">'
+        f'{_file_sections(record, model, report_path)}'
+        '</div>'
+        '<details class="sub-detail"><summary>Record metadata</summary>'
+        f'{_settings_table(metadata_rows, "No record metadata.")}'
+        '</details>'
+        '</div></details>'
+    )
+
+
 def _record_details(model: ReportModel, report_path: Path) -> str:
-    details: list[str] = []
-    for record in model.records:
-        metadata_rows = [
-            ("Scope", dict(record.scope)),
-            ("Started at", record.started_at),
-            ("Finished at", record.finished_at),
-            ("Source JSON", str(record.source_path)),
-        ]
-        details.append(
-            '<details class="record-detail">'
-            '<summary>'
-            f'<span class="record-title">{_html(record.module.title())} · '
-            f'{_html(record.record_id)}</span>'
-            f'<span class="record-scope">{_html(_record_scope_label(record))}</span>'
-            f'{_status_badge(record.status)}'
-            f'<span class="record-runtime">{_html(_format_duration(record.duration_seconds))}</span>'
-            '</summary>'
-            '<div class="record-body">'
-            '<div class="detail-grid">'
-            f'<section><h4>Counts</h4>{_counts_table(record)}</section>'
-            f'{_parameter_sections(record)}'
-            '</div>'
-            '<div class="file-section-grid">'
-            f'{_file_sections(record, model, report_path)}'
-            '</div>'
-            '<details class="sub-detail"><summary>Record metadata</summary>'
-            f'{_settings_table(metadata_rows, "No record metadata.")}'
-            '</details>'
-            '</div></details>'
+    if not model.records:
+        return '<div class="empty">No module records available.</div>'
+
+    sample_names = _sample_names(model)
+
+    if not sample_names:
+        return ''.join(
+            _record_detail_html(model, report_path, record)
+            for record in model.records
         )
-    return ''.join(details) if details else '<div class="empty">No module records available.</div>'
+
+    sections: list[str] = []
+    run_records = [
+        record
+        for record in model.records
+        if record.sample is None
+    ]
+
+    if run_records:
+        sections.append(
+            '<h3 class="record-group-heading">Run-level records</h3>'
+        )
+        sections.extend(
+            _record_detail_html(model, report_path, record)
+            for record in run_records
+        )
+
+    for sample in sample_names:
+        sections.append(
+            '<h3 class="record-group-heading">'
+            f'Sample {_html(sample)}</h3>'
+        )
+        sample_records = sorted(
+            [
+                record
+                for record in model.records
+                if record.sample == sample
+            ],
+            key=_record_sort_key,
+        )
+        sections.extend(
+            _record_detail_html(model, report_path, record)
+            for record in sample_records
+        )
+
+    return ''.join(sections)
+
+
 
 
 def _qc_links(model: ReportModel, report_path: Path) -> str:
@@ -2067,7 +2801,7 @@ def render_html_report(
 
     css = r'''
 :root{--bg:#f4f7fb;--surface:#fff;--soft:#f8fafc;--ink:#142033;--muted:#66758a;--line:#dce4ee;--accent:#285e9a;--accent2:#173f70;--success:#237a57;--successbg:#e9f7f0;--warning:#9a6418;--warningbg:#fff6df;--danger:#a13b3b;--dangerbg:#fdeeee;--productive:#2b8a62;--nonproductive:#d18a2e;--valid:#3b78b8;--unannotated:#cbd5e1;--shadow:0 14px 36px rgba(30,54,83,.08)}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.5}a{color:var(--accent2)}code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;overflow-wrap:anywhere}.shell{max-width:1480px;margin:auto;padding:28px}.hero{background:linear-gradient(135deg,#173f70,#285e9a 58%,#3b7bbb);color:#fff;padding:34px;border-radius:22px;box-shadow:var(--shadow)}.hero-content{display:flex;gap:28px;align-items:center;justify-content:space-between}.hero-copy{min-width:0;flex:1}.hero-logo-wrap{flex:0 0 auto;background:transparent;border-radius:0;padding:0;box-shadow:none;}.hero-logo{display:block;width:224px;height:auto;object-fit:contain;}.kicker{margin:0 0 8px;font-size:.78rem;font-weight:750;letter-spacing:.16em;text-transform:uppercase;opacity:.78}.hero h1{margin:0;font-size:clamp(2rem,4vw,3.2rem);line-height:1.05}.subtitle{max-width:980px;margin:14px 0 0;font-size:1rem;opacity:.88;overflow-wrap:anywhere}.meta{display:flex;flex-wrap:wrap;align-items:center;gap:10px 22px;margin-top:24px;font-size:.88rem;opacity:.9}.validation-chip{display:inline-flex;border-radius:999px;padding:5px 10px;font-weight:760}.validation-chip.success{color:#dff8eb;background:rgba(23,112,75,.48)}.validation-chip.warning{color:#fff2ca;background:rgba(153,95,12,.5)}.tabs{display:flex;gap:8px;margin-top:22px;padding:7px;background:rgba(255,255,255,.13);border-radius:14px;width:fit-content}.tab{border:0;border-radius:10px;padding:10px 16px;cursor:pointer;color:#fff;background:transparent;font:inherit;font-weight:700}.tab.active{background:#fff;color:var(--accent2)}.panel{display:none}.panel.active{display:block}.section{margin-top:22px;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:24px;box-shadow:var(--shadow)}.section h2{margin:0 0 3px;font-size:1.35rem}.section h4{margin:0 0 10px}.desc{margin:0 0 18px;color:var(--muted);font-size:.93rem}.metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-top:22px}.metric-card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:var(--shadow)}.metric-label{color:var(--muted);font-size:.82rem;font-weight:750;text-transform:uppercase;letter-spacing:.05em}.metric-value{margin-top:7px;font-size:1.9rem;font-weight:780;letter-spacing:-.03em}.metric-detail{margin-top:3px;color:var(--muted);font-size:.85rem}.table-wrap{width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:13px}.table-wrap.compact{border-radius:10px}table{width:100%;border-collapse:collapse;background:var(--surface)}th,td{padding:12px 13px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}thead th{background:var(--soft);color:var(--muted);font-size:.76rem;text-transform:uppercase;letter-spacing:.05em}tbody tr:last-child td,tbody tr:last-child th{border-bottom:0}.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}.subtle{margin-top:2px;color:var(--muted);font-size:.78rem}.status,.file-badge{display:inline-flex;border-radius:999px;padding:3px 8px;font-size:.72rem;font-weight:760;white-space:nowrap}.status-success,.file-badge.present{color:var(--success);background:var(--successbg)}.file-badge.relocated{color:var(--accent2);background:#eaf2fb}.status-failed,.file-badge.missing{color:var(--danger);background:var(--dangerbg)}.status-skipped{color:var(--warning);background:var(--warningbg)}.file-badge{margin-left:8px}.notice{border-radius:13px;padding:15px 17px;border:1px solid}.notice.warning{color:var(--warning);background:var(--warningbg);border-color:#ecd59f}.notice.relocation{color:var(--accent2);background:#edf5ff;border-color:#c9dcf2;margin-bottom:18px}.notice ul{margin:0}.empty{padding:28px;color:var(--muted);text-align:center}.empty.compact{padding:12px}.retention-chart{display:flex;flex-direction:column;gap:12px;margin-bottom:18px}.retention-row{display:grid;grid-template-columns:minmax(180px,260px) minmax(180px,1fr) 90px;gap:14px;align-items:center}.retention-label{font-size:.9rem}.retention-track{height:24px;border-radius:999px;background:#e9eef5;overflow:hidden}.retention-bar{height:100%;min-width:2px;border-radius:999px;background:linear-gradient(90deg,var(--accent2),var(--accent))}.retention-count{text-align:right;font-weight:760;font-variant-numeric:tabular-nums}.retention-table{margin-top:6px}.outcome-chart{display:flex;flex-direction:column;gap:22px}.outcome-row{display:grid;grid-template-columns:minmax(190px,260px) 1fr;gap:18px;align-items:center}.outcome-bar{display:flex;height:34px;border-radius:10px;overflow:hidden;background:#edf2f7}.outcome-segment{height:100%}.outcome-segment.productive,.legend-dot.productive{background:var(--productive)}.outcome-segment.nonproductive,.legend-dot.nonproductive{background:var(--nonproductive)}.outcome-segment.valid,.legend-dot.valid{background:var(--valid)}.outcome-segment.unannotated,.legend-dot.unannotated{background:var(--unannotated)}.outcome-counts{display:flex;flex-wrap:wrap;gap:7px 18px;margin-top:8px;color:var(--muted);font-size:.83rem}.legend-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}.resource-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}.resource{display:flex;flex-direction:column;gap:3px;color:inherit;text-decoration:none;border:1px solid var(--line);border-radius:13px;padding:14px;background:var(--soft)}.resource span{color:var(--muted);font-size:.75rem;text-transform:uppercase;font-weight:750}.resource small{color:var(--muted);overflow-wrap:anywhere}.collapsible-section{padding:0;overflow:hidden}.collapsible-section>summary{cursor:pointer;list-style:none;padding:22px 24px;font-weight:780}.collapsible-section>summary::-webkit-details-marker{display:none}.collapsible-section>summary:after{content:"+";float:right;color:var(--accent)}.collapsible-section[open]>summary:after{content:"−"}.collapsible-content{padding:0 24px 24px}.record-detail{background:var(--surface);border:1px solid var(--line);border-radius:13px;margin-bottom:12px;overflow:hidden}.record-detail summary{display:grid;grid-template-columns:minmax(170px,1fr) minmax(130px,auto) auto auto;gap:12px;align-items:center;cursor:pointer;padding:15px 17px;background:var(--soft)}.record-detail[open]>summary{border-bottom:1px solid var(--line)}.record-title{font-weight:780}.record-scope,.record-runtime{color:var(--muted);font-size:.84rem}.record-body{padding:18px}.detail-grid{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);gap:18px}.file-section-grid>section{margin-top:18px}.sub-detail{margin-top:16px;border:1px solid var(--line);border-radius:11px;overflow:hidden}.sub-detail>summary{cursor:pointer;background:var(--soft);padding:12px 14px;font-weight:720}.sub-detail>.table-wrap{border:0;border-top:1px solid var(--line);border-radius:0}.kv th{width:220px;color:var(--muted);background:var(--soft)}.kv td{overflow-wrap:anywhere}.footer{padding:26px 6px 10px;color:var(--muted);font-size:.82rem;text-align:center}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.5}a{color:var(--accent2)}code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;overflow-wrap:anywhere}.shell{max-width:1480px;margin:auto;padding:28px}.hero{background:linear-gradient(135deg,#173f70,#285e9a 58%,#3b7bbb);color:#fff;padding:34px;border-radius:22px;box-shadow:var(--shadow)}.hero-content{display:flex;gap:28px;align-items:center;justify-content:space-between}.hero-copy{min-width:0;flex:1}.hero-logo-wrap{flex:0 0 auto;background:transparent;border-radius:0;padding:0;box-shadow:none;}.hero-logo{display:block;width:224px;height:auto;object-fit:contain;}.kicker{margin:0 0 8px;font-size:.78rem;font-weight:750;letter-spacing:.16em;text-transform:uppercase;opacity:.78}.hero h1{margin:0;font-size:clamp(2rem,4vw,3.2rem);line-height:1.05}.subtitle{max-width:980px;margin:14px 0 0;font-size:1rem;opacity:.88;overflow-wrap:anywhere}.meta{display:flex;flex-wrap:wrap;align-items:center;gap:10px 22px;margin-top:24px;font-size:.88rem;opacity:.9}.validation-chip{display:inline-flex;border-radius:999px;padding:5px 10px;font-weight:760}.validation-chip.success{color:#dff8eb;background:rgba(23,112,75,.48)}.validation-chip.warning{color:#fff2ca;background:rgba(153,95,12,.5)}.tabs{display:flex;gap:8px;margin-top:22px;padding:7px;background:rgba(255,255,255,.13);border-radius:14px;width:fit-content}.tab{border:0;border-radius:10px;padding:10px 16px;cursor:pointer;color:#fff;background:transparent;font:inherit;font-weight:700}.tab.active{background:#fff;color:var(--accent2)}.panel{display:none}.panel.active{display:block}.section{margin-top:22px;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:24px;box-shadow:var(--shadow)}.section h2{margin:0 0 3px;font-size:1.35rem}.section h4{margin:0 0 10px}.desc{margin:0 0 18px;color:var(--muted);font-size:.93rem}.metric-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-top:22px}.metric-card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:var(--shadow)}.metric-label{color:var(--muted);font-size:.82rem;font-weight:750;text-transform:uppercase;letter-spacing:.05em}.metric-value{margin-top:7px;font-size:1.9rem;font-weight:780;letter-spacing:-.03em}.metric-detail{margin-top:3px;color:var(--muted);font-size:.85rem}.table-wrap{width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:13px}.table-wrap.compact{border-radius:10px}table{width:100%;border-collapse:collapse;background:var(--surface)}th,td{padding:12px 13px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}thead th{background:var(--soft);color:var(--muted);font-size:.76rem;text-transform:uppercase;letter-spacing:.05em}tbody tr:last-child td,tbody tr:last-child th{border-bottom:0}.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}.subtle{margin-top:2px;color:var(--muted);font-size:.78rem}.status,.file-badge{display:inline-flex;border-radius:999px;padding:3px 8px;font-size:.72rem;font-weight:760;white-space:nowrap}.status-success,.file-badge.present{color:var(--success);background:var(--successbg)}.file-badge.relocated{color:var(--accent2);background:#eaf2fb}.status-failed,.file-badge.missing{color:var(--danger);background:var(--dangerbg)}.status-skipped{color:var(--warning);background:var(--warningbg)}.file-badge{margin-left:8px}.notice{border-radius:13px;padding:15px 17px;border:1px solid}.notice.warning{color:var(--warning);background:var(--warningbg);border-color:#ecd59f}.notice.relocation{color:var(--accent2);background:#edf5ff;border-color:#c9dcf2;margin-bottom:18px}.notice ul{margin:0}.empty{padding:28px;color:var(--muted);text-align:center}.empty.compact{padding:12px}.retention-chart{display:flex;flex-direction:column;gap:12px;margin-bottom:18px}.retention-row{display:grid;grid-template-columns:minmax(180px,260px) minmax(180px,1fr) 90px;gap:14px;align-items:center}.retention-label{font-size:.9rem}.retention-track{height:24px;border-radius:999px;background:#e9eef5;overflow:hidden}.retention-bar{height:100%;min-width:2px;border-radius:999px;background:linear-gradient(90deg,var(--accent2),var(--accent))}.retention-count{text-align:right;font-weight:760;font-variant-numeric:tabular-nums}.retention-table{margin-top:6px}.outcome-chart{display:flex;flex-direction:column;gap:22px}.outcome-row{display:grid;grid-template-columns:minmax(190px,260px) 1fr;gap:18px;align-items:center}.outcome-bar{display:flex;height:34px;border-radius:10px;overflow:hidden;background:#edf2f7}.outcome-segment{height:100%}.outcome-segment.productive,.legend-dot.productive{background:var(--productive)}.outcome-segment.nonproductive,.legend-dot.nonproductive{background:var(--nonproductive)}.outcome-segment.valid,.legend-dot.valid{background:var(--valid)}.outcome-segment.unannotated,.legend-dot.unannotated{background:var(--unannotated)}.outcome-counts{display:flex;flex-wrap:wrap;gap:7px 18px;margin-top:8px;color:var(--muted);font-size:.83rem}.legend-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}.resource-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}.resource{display:flex;flex-direction:column;gap:3px;color:inherit;text-decoration:none;border:1px solid var(--line);border-radius:13px;padding:14px;background:var(--soft)}.resource span{color:var(--muted);font-size:.75rem;text-transform:uppercase;font-weight:750}.resource small{color:var(--muted);overflow-wrap:anywhere}.collapsible-section{padding:0;overflow:hidden}.collapsible-section>summary{cursor:pointer;list-style:none;padding:22px 24px;font-weight:780}.collapsible-section>summary::-webkit-details-marker{display:none}.collapsible-section>summary:after{content:"+";float:right;color:var(--accent)}.collapsible-section[open]>summary:after{content:"−"}.collapsible-content{padding:0 24px 24px}.record-detail{background:var(--surface);border:1px solid var(--line);border-radius:13px;margin-bottom:12px;overflow:hidden}.record-detail summary{display:grid;grid-template-columns:minmax(170px,1fr) minmax(130px,auto) auto auto;gap:12px;align-items:center;cursor:pointer;padding:15px 17px;background:var(--soft)}.record-detail[open]>summary{border-bottom:1px solid var(--line)}.record-title{font-weight:780}.record-scope,.record-runtime{color:var(--muted);font-size:.84rem}.record-body{padding:18px}.record-group-heading{margin:24px 0 12px;font-size:1.05rem}.detail-grid{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);gap:18px}.file-section-grid>section{margin-top:18px}.sub-detail{margin-top:16px;border:1px solid var(--line);border-radius:11px;overflow:hidden}.sub-detail>summary{cursor:pointer;background:var(--soft);padding:12px 14px;font-weight:720}.sub-detail>.table-wrap{border:0;border-top:1px solid var(--line);border-radius:0}.kv th{width:220px;color:var(--muted);background:var(--soft)}.kv td{overflow-wrap:anywhere}.footer{padding:26px 6px 10px;color:var(--muted);font-size:.82rem;text-align:center}
 @media(max-width:900px){.shell{padding:14px}.hero{padding:24px;border-radius:16px}.hero-logo{width:160px;height:auto}.detail-grid{grid-template-columns:1fr}.record-detail summary{grid-template-columns:1fr auto}.record-scope,.record-runtime{display:none}.retention-row,.outcome-row{grid-template-columns:1fr}.retention-count{text-align:left}.outcome-label{margin-bottom:-8px}}
 @media(max-width:600px){.hero-content{align-items:flex-start}.hero-logo-wrap{display:none}.tabs{width:100%;overflow-x:auto}.tab{white-space:nowrap}}
 @media print{body{background:#fff}.shell{max-width:none;padding:0}.hero,.section,.metric-card{box-shadow:none}.tabs{display:none}.panel{display:block!important}.section{break-inside:avoid}a{color:inherit;text-decoration:none}.collapsible-section>.collapsible-content{display:block}.record-detail{break-inside:avoid}}
@@ -2098,6 +2832,7 @@ document.querySelectorAll(".tab").forEach((button)=>{button.addEventListener("cl
 {_overview_metrics(model)}
 {_warnings_section(model)}
 <article class="section"><h2>Module summary</h2><p class="desc"></p>{_module_summary_table(model)}</article>
+{_demux_overview_section(model)}
 <article class="section"><h2>Read processing retention</h2><p class="desc"></p>{_retention_panel(_read_retention_stages(model), unit_label="Reads")}</article>
 <article class="section"><h2>Consensus and receptor yield</h2><p class="desc"></p>{_retention_panel(_yield_retention_stages(model), unit_label="Sequences")}</article>
 <article class="section"><h2>QC reports</h2><p class="desc">Available NanoPlot-reports found in the result directory</p>{_qc_links(model, resolved_report_path)}</article>
