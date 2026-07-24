@@ -1,3 +1,8 @@
+# LongAIRR 1.2.3-devel
+
+Bug-fix for bulk samples in longairr_trim_umis.py. When skipping a header, now also
+skips its sequence. 
+
 # LongAIRR 1.2.2-devel
 
 Introducing new metadata scheme into 'longairr demux'. New reporting scheme is
