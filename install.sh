@@ -31,6 +31,7 @@ db_dir="./"
 input_species=("human") # Default input species
 
 env_bin="TRUE"
+dorado_bin="FALSE"
 verbose="TRUE"
 
 # Show general help message
@@ -49,6 +50,7 @@ show_help() {
     echo "  --species    VAL1,VAL2,... | Comma-separated list of species to download. Valid species are:
                                          human, mouse, rat, rabbit, rhesus_monkey (default: human)"
     echo "  --env         TRUE | FALSE | Specify if you want to (re-)install the conda environment"
+    echo "  --dorado      TRUE | FALSE | Specify if you want to install Dorado on your system"
     echo "  --verbose     TRUE | FALSE | Additional runtime information printed to the stdout (default: TRUE)"
     echo "  -h, --help                 | Show this help message and exit"
     echo "  -v, --version              | Show version information and exit"
@@ -99,6 +101,15 @@ while [[ $# -gt 0 ]]; do
       env_bin=$(echo "$2" | tr '[:lower:]' '[:upper:]')
       if [[ "${env_bin}" != "TRUE" && "${env_bin}" != "FALSE" ]]; then
         echo "Error: Invalid value for --env. Must be TRUE or FALSE."
+        show_help
+        exit 1
+      fi
+      shift 2
+      ;;
+    --dorado)
+      dorado_bin=$(echo "$2" | tr '[:lower:]' '[:upper:]')
+      if [[ "${dorado_bin}" != "TRUE" && "${dorado_bin}" != "FALSE" ]]; then
+        echo "Error: Invalid value for --dorado. Must be TRUE or FALSE."
         show_help
         exit 1
       fi
@@ -227,6 +238,44 @@ if [[ "${fetch_db}" == "TRUE" ]]; then
   fi
 fi
 
+#===============================Install Dorado#================================#
+
+
+if [[ "${dorado_bin}" == "TRUE" ]]; then
+
+  # Download and install Dorado
+  bin_dir=$HOME/.local/bin/longairr/  # Directory to add to PATH
+  dorado_version="0.9.1"
+  dorado_url="https://cdn.oxfordnanoportal.com/software/analysis/dorado-${dorado_version}-linux-x64.tar.gz"
+  dorado_tmp_dir=$(mktemp -d)
+
+  mkdir -p "${bin_dir}"
+
+  echo "Downloading Dorado..."
+  wget -q -O "${dorado_tmp_dir}/dorado.tar.gz" "${dorado_url}"
+
+  echo "Extracting Dorado..."
+  tar -xzf "${dorado_tmp_dir}/dorado.tar.gz" -C "${dorado_tmp_dir}"
+
+  echo "Installing Dorado into ${bin_dir}..."
+  mv "${dorado_tmp_dir}/dorado-${dorado_version}-linux-x64/" "${bin_dir}/dorado-${dorado_version}-linux-x64/"
+  chmod +x "${bin_dir}/dorado-${dorado_version}-linux-x64/"
+
+  # Cleanup
+  rm -rf "${dorado_tmp_dir}"
+  echo "Dorado installed successfully in ${bin_dir}"
+
+  sed -i '/# >>> LongAIRR DORADO PATH >>>/,/# <<< LongAIRR DORADO PATH <<</d' "$HOME/.bashrc"
+
+  cat >> "$HOME/.bashrc" <<EOF
+
+# >>> LongAIRR DORADO PATH >>>
+export PATH="\$PATH:${bin_dir}dorado-${dorado_version}-linux-x64/bin/"
+# <<< LongAIRR DORADO PATH <<<
+EOF
+
+  echo "Dorado paths added to ~/.bashrc"
+fi
 
 #==============================Create conda env================================#
 
@@ -272,25 +321,6 @@ if [[ "${env_bin}" == "TRUE" ]]; then
     exit 1
   fi
 
-  # Download and install Dorado
-  ##dorado_version="0.9.1"
-  ##dorado_url="https://cdn.oxfordnanoportal.com/software/analysis/dorado-${dorado_version}-linux-x64.tar.gz"
-  ##dorado_tmp_dir=$(mktemp -d)
-
-  ##echo "Downloading Dorado..."
-  ##wget -q -O "${dorado_tmp_dir}/dorado.tar.gz" "${dorado_url}"
-
-  ##echo "Extracting Dorado..."
-  ##tar -xzf "${dorado_tmp_dir}/dorado.tar.gz" -C "${dorado_tmp_dir}"
-
-  ##echo "Installing Dorado into ${bin_dir}..."
-  ##mv "${dorado_tmp_dir}/dorado-${dorado_version}-linux-x64/" "${bin_dir}/dorado-${dorado_version}-linux-x64/"
-  ##chmod +x "${bin_dir}/dorado-${dorado_version}-linux-x64/"
-
-  # Cleanup
-  ##rm -rf "${dorado_tmp_dir}"
-  ##echo "Dorado installed successfully inside the '${env_name}' environment"
-
   # Add LongAIRR section in .bashrc
   sed -i '/# >>> LongAIRR PATH >>>/,/# <<< LongAIRR PATH <<</d' "$HOME/.bashrc"
 
@@ -299,7 +329,6 @@ if [[ "${env_bin}" == "TRUE" ]]; then
 
 # >>> LongAIRR PATH >>>
 export PATH="\$PATH:${bin_dir}"
-export PATH="\$PATH:${bin_dir}dorado-${dorado_version}-linux-x64/bin/"
 # <<< LongAIRR PATH <<<
 EOF
 
@@ -325,10 +354,10 @@ EOF
   fi
 
   # Install the LongAIRR logo used by the self-contained HTML report.
-  local_logo="$(dirname "$0")/vignette/figures/longairr_logo.png"
+  local_logo="$(dirname "$0")/docs/images_design/images/longairr_logo_small.png"
 
   if [[ -f "${local_logo}" ]]; then
-    cp -f "${local_logo}" "${bin_dir}/longairr_logo.png"
+    cp -f "${local_logo}" "${bin_dir}/longairr_logo_small.png"
   else
     echo "WARNING: LongAIRR logo was not found at ${local_logo}. Reports will be generated without the logo."
   fi

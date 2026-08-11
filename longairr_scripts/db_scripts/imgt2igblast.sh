@@ -7,18 +7,25 @@
 #
 #   DESCRIPTION:  Convert IMGT germline sequences to IgBLAST database
 #
-#        AUTHOR:  Jonas Schuck, jschuckdev@gmail.com
-#    BUG-REPORT:  https://github.com/AGImkeller/LongAIRR/issues
-#
-#          NOTE: Script taken and extended from:
-#                https://bitbucket.org/kleinstein/immcantation/src/master/scripts/imgt2igblast.sh
-#
-# Credits to creators:
+# Original work:
 #        Author:  Jason Anthony Vander Heiden
 #          Date:  2016.11.21
-#        Source:  (see NOTE)
+#       License:  AGPL-3
+#        Source:  https://bitbucket.org/kleinstein/immcantation/src/master/scripts/imgt2igblast.sh
+#Current source:  https://github.com/immcantation/immcantation/blob/master/scripts/imgt2igblast.sh
+#
+# Extended work:
+#   Modified by:  Jonas Schuck, jschuckdev@gmail.com
+#    BUG-REPORT:  https://github.com/AGImkeller/LongAIRR/issues
+#          Date:  2024.08.21
+#
+#          NOTE: This file is a modified version of software distributed by the
+#                Immcantation project under the GNU Affero General Public License,
+#                version 3. This modified file remains licensed under AGPL-3.0-only
+#                and is not covered by LongAIRR's Apache-2.0 license.
 #
 #================================================================#
+
 
 # Default argument values
 OUTDIR="."

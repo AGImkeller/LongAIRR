@@ -1,2 +1,4 @@
 .snakemake/
 config_imkeller.yaml
+.venv-docs/
+site/

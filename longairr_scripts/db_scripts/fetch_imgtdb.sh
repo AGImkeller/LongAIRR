@@ -7,23 +7,29 @@
 #
 #   DESCRIPTION:  Download and format germlines from the IMGT website
 #
-#        AUTHOR:  Jonas Schuck, jschuckdev@gmail.com
-#    BUG-REPORT:  https://github.com/AGImkeller/LongAIRR/issues
-#
-#          NOTE: Script taken and extended from:
-#                https://bitbucket.org/kleinstein/immcantation/src/master/scripts/fetch_imgtdb.sh
-#
-# Credits to creators:
+# Original work:
 #        Author:  Mohamed Uduman, Jason Anthony Vander Heiden
 #          Date:  2017.07.03
-#        Source:  (see NOTE)
+#       License:  AGPL-3
+#        Source:  https://bitbucket.org/kleinstein/immcantation/src/master/scripts/fetch_imgtdb.sh
+#Current source:  https://github.com/immcantation/immcantation/blob/master/scripts/fetch_imgtdb.sh
+#
+# Extended work:
+#   Modified by:  Jonas Schuck, jschuckdev@gmail.com
+#    BUG-REPORT:  https://github.com/AGImkeller/LongAIRR/issues
+#          Date:  2024.08.21
+#
+#          NOTE: This file is a modified version of software distributed by the
+#                Immcantation project under the GNU Affero General Public License,
+#                version 3. This modified file remains licensed under AGPL-3.0-only
+#                and is not covered by LongAIRR's Apache-2.0 license.
 #
 #================================================================#
 
 
 #===========install dependencies for all db-install scripts====================#
 
-# Define required packages (installtion for clean_imgt script
+# Define required packages
 declare -A required_packages
 required_packages[biopython]="1.83"
 required_packages[packaging]=""
