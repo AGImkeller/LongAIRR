@@ -246,18 +246,31 @@ if [[ "${dorado_bin}" == "TRUE" ]]; then
   # Download and install Dorado
   bin_dir=$HOME/.local/bin/longairr/  # Directory to add to PATH
   dorado_version="0.9.1"
+  dorado_install_dir="${bin_dir}dorado-${dorado_version}-linux-x64"
   dorado_url="https://cdn.oxfordnanoportal.com/software/analysis/dorado-${dorado_version}-linux-x64.tar.gz"
   dorado_tmp_dir=$(mktemp -d)
 
   mkdir -p "${bin_dir}"
 
   echo "Downloading Dorado..."
-  wget -q -O "${dorado_tmp_dir}/dorado.tar.gz" "${dorado_url}"
+  wget -q -O "${dorado_tmp_dir}/dorado.tar.gz" "${dorado_url}" || {
+      echo "Failed to download Dorado."
+      rm -rf "${dorado_tmp_dir}"
+      exit 1
+  }
 
   echo "Extracting Dorado..."
-  tar -xzf "${dorado_tmp_dir}/dorado.tar.gz" -C "${dorado_tmp_dir}"
+  tar -xzf "${dorado_tmp_dir}/dorado.tar.gz" -C "${dorado_tmp_dir}" || {
+      echo "Failed to extract Dorado."
+      rm -rf "${dorado_tmp_dir}"
+      exit 1
+  }
 
   echo "Installing Dorado into ${bin_dir}..."
+
+  # Replace an existing installation of the same pinned Dorado version
+  rm -rf "${dorado_install_dir}"
+
   mv "${dorado_tmp_dir}/dorado-${dorado_version}-linux-x64/" "${bin_dir}/dorado-${dorado_version}-linux-x64/"
   chmod +x "${bin_dir}/dorado-${dorado_version}-linux-x64/"
 

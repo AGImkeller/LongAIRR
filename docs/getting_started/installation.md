@@ -16,7 +16,7 @@ Setting up **reference databases** is described further [below](#extra-dependenc
 Install Miniforge (a Conda-based environment manager) using the following commands:
 
 Follow the on-screen information during Miniforge's installation. More information can be found [**here**](https://github.com/conda-forge/miniforge/)
-```markdown
+```bash
 curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
 
 bash Miniforge3-$(uname)-$(uname -m).sh
@@ -33,12 +33,17 @@ cd LongAIRR
 The default branch contains the latest stable release. The `devel` branch
 contains active development and may change without notice.
 
-
 ```bash
-bash install.sh \
-  --env TRUE \
-  --scripts-dir ./longairr_scripts/
+bash install.sh --dorado TRUE
 ```
+
+`--scripts-dir` defaults to  `./longairr_scripts/` and does not have to be stated when
+running the installation script from inside the LongAIRR directory.
+
+Set `--dorado FALSE` if you are not planning to use `longairr basecall`.
+If LongAIRR is installed with `--dorado TRUE`, Dorado is installed alongside
+LongAIRR under `$HOME/.local/bin/longairr/`. See further below
+in [extra dependencies](#extra-dependencies).
 
 The script creates the `longairr` Conda environment and installs the LongAIRR
 command below `$HOME/.local/bin/longairr/`.
@@ -77,7 +82,8 @@ bash deinstall.sh
     --dorado TRUE
 ```
 
-- **longairr collapse** requires spatial barcode whitelist from **10x SpaceRanger**
+- **longairr collapse** requires a spatial barcode whitelist from **10x Genomics** 
+**SpaceRanger**
   for spAIRR datasets (Visium / Visium HD 3').
   Refer to our [Spatial Barcode Whitelist](../index.md#in-depth) section
 
@@ -91,7 +97,7 @@ bash deinstall.sh
     --save-db /path/to/reference-parent/ \
     --species human \
     --env FALSE \
-    --dorado FALSE \ 
+    --dorado FALSE \
     --scripts-dir ./longairr_scripts/
 ```
 
@@ -127,7 +133,7 @@ ___
 | ONT **POD5 files** | Basecall on a GPU, then continue from FASTQ |
 | ONT or PacBio HiFi **FASTQ** | Start with `longairr filter` |
 | **Visium V1** spatial AIRR | Use the spatial workflow with a Visium V1 coordinate whitelist |
-| **Visium HD 3′** spatial AIRR | Use the spatial workflow with a LongAIRR_whitelist SQLite index |
+| **Visium HD 3′** spatial AIRR | Use the spatial workflow with a LongAIRR-whitelist generated SQLite index |
 | Multiplexed **Takara SMART-Seq BCR** | Use the bulk workflow with UDI demultiplexing |
 | Filtered FASTA or intermediate LongAIRR output | Continue manually from the relevant module |
 

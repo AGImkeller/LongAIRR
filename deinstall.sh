@@ -43,7 +43,7 @@ show_version() {
 # Define the environment name and target directory (where longairr scripts are installed)
 ENV_NAME="longairr"
 BIN_DIR=$HOME/.local/bin/longairr/  # Target bin directory
-DORADO_BIN_DIR=${BIN_DIR}dorado-0.9.1-linux-x64/bin/
+#DORADO_BIN_DIR=${BIN_DIR}dorado-0.9.1-linux-x64/bin/
 
 #==================== Remove Conda Environment =====================#
 
@@ -59,8 +59,12 @@ fi
 #==================== Remove Scripts ====================#
 
 # Delete the scripts installed in $BIN_DIR
-echo "Removing installed scripts from $BIN_DIR..."
-rm -r "$BIN_DIR"
+if [[ -d "${BIN_DIR}" ]]; then
+    echo "Removing installed files from ${BIN_DIR}..."
+    rm -rf "${BIN_DIR}"
+else
+    echo "LongAIRR installation directory does not exist."
+fi
 
 #==================== Clean up Environment Variables =====================#
 
@@ -71,4 +75,15 @@ if grep -q "# >>> LongAIRR PATH >>>" "$HOME/.bashrc"; then
     echo "Removed. Run: source ~/.bashrc"
 else
     echo "LongAIRR PATH block not found in ~/.bashrc."
+fi
+
+# Remove Dorado PATH section from .bashrc
+if grep -q "# >>> LongAIRR DORADO PATH >>>" "$HOME/.bashrc"; then
+    echo "Removing LongAIRR Dorado PATH block from ~/.bashrc..."
+    sed -i \
+      '/# >>> LongAIRR DORADO PATH >>>/,/# <<< LongAIRR DORADO PATH <<</d' \
+      "$HOME/.bashrc"
+    echo "Dorado PATH removed. Run: source ~/.bashrc"
+else
+    echo "LongAIRR Dorado PATH block not found in ~/.bashrc."
 fi
