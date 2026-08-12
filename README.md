@@ -1,10 +1,10 @@
 
-[![Lifecycle: experimental](https://lifecycle.r-lib.org/articles/figures/lifecycle-experimental.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
-[![Install](https://img.shields.io/badge/Install-Github-brightgreen)](#installation-and-setup)
+[![Install from GitHub](https://img.shields.io/badge/install-GitHub-2ea44f.svg)](./docs/getting_started/installation.md#github)
+[![Documentation](https://img.shields.io/badge/LongAIRR-Documentation-2ea44f.svg)]()
 
-# LongAIRR <img src="./vignette/figures/longairr_logo.png" align="right" height="150" alt="logo" />
+# LongAIRR <img src="./docs/images_design/images/longairr_logo_small.png" align="right" height="150" alt="logo" />
 
-<a href=""><img src="https://img.shields.io/badge/doi-LongAIRR_preprint-blue.svg"><a>
+[![bioRxiv](https://img.shields.io/badge/bioRxiv-10.64898%2F2026.06.22.733709-B31B1B.svg)](https://doi.org/10.64898/2026.06.22.733709)
 
 We present **LongAIRR**, a novel bioinformatic workflow 
 designed to annotate full-length immunoglobulin and T cell receptor sequencing data
@@ -14,138 +14,8 @@ and established tools from the [Immcantation framework](https://immcantation.rea
 to reliably generate antigen receptor sequences from long-read sequencing data.
 
 <p align="center">
-  <img src="./vignette/figures/longairr_profiling_overview.png" width="800" />
+  <img src="./docs/images_design/images/longairr_profiling_overview.png" width="800" />
 </p>
-
-___
-
-## Table of contents
-* [Installation and Setup](#installation-and-setup)
-  * [Prerequisites](#prerequisites)
-    * [Install Conda / Mamba](#install-conda--mamba)
-  * [LongAIRR Installation and Setup](#longairr-installation-and-setup)
-  * [Deinstallation](#deinstallation)
-* [LongAIRR Software Overview](#longairr-software-overview)
-  * [LongAIRR basecall](#1-longairr-basecall)
-  * [LongAIRR filter](#2-longairr-filter)
-  * [LongAIRR demux](#3-longairr-demux)
-  * [LongAIRR collapse](#4-longairr-collapse)
-  * [LongAIRR seqtag](#5-longairr-seqtag)
-  * [LongAIRR airr](#6-longairr-airr)
-  * [Read Summary](#Read-Summary)
-* [Extended documentation](#extended-documentation)
-* [Citation](#Citation)
-* [Authors / Contact](#authors)
-  
-___
-
-# Installation and Setup
-
-Follow the steps below to install, set up and, if necessary, deinstall the LongAIRR software.
-
-## Prerequisites
-
-### Install Conda / Mamba 
-
-Install Mambaforge (a Conda-based environment manager) using the following commands:
-
-Follow the on-screen information during Miniforge's installation. More information can be found [**here**](https://github.com/conda-forge/miniforge/)
-```markdown
-curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
-
-bash Miniforge3-$(uname)-$(uname -m).sh
-conda activate base
-```
-
-## LongAIRR Installation and Setup
-
-### Download Repository
-
-Create a directory for LongAIRR and download the repository:
-
-```markdown
-mkdir -p install/here
-cd install/here
-
-git clone https://github.com/AGImkeller/LongAIRR.git
-```
-
-### Run install.sh
-
-Use the **install.sh** script to set up **LongAIRR**. You have the options to download
-the required databases and set up the software environment. Depending on available internet speed, downloading
-and installing all packages of the conda environment might take between 5-10 minutes.
-
-Key Options:
--  `--fetch-db TRUE`: Downloads the required IMGT/IgBlast reference database.
--  `--save-db [path]`: Specifies the directory to store the reference database.
--  `--species [name]`: Specifies the species for the IMGT reference (e.g., human or mouse).
--  `--env TRUE|FALSE`: Sets up 'longairr' conda environment
-
-> [!Tip]
-> To view all available parameter options, run:
->
-> ```markdown
-> bash install.sh --help
-
-The path to the *longairr_scripts* directory in the downloaded folder is a required
-input. The script installs all scripts to *$HOME/.local/bin/longairr*, updates 
-the PATH variable, and makes the software executable on the whole system. However,
-you will only be able to run the functionalities in the activated conda environment.
-
-**Example commands**
-
-```markdown
-cd path/to/LongAIRR
-
-#full example (including reference download)
-bash install.sh --fetch-db TRUE --save-db ./ --species human --env true ./longairr_scripts/
-
-#short example (no reference download)
-bash install.sh
-```
-> [!Important]
-> After completion, restart your terminal or refresh the current session with the command:
-> ```markdown
-> source $HOME/.bashrc
-
-### Activate conda environment and run LongAIRR
-
-Activate the 'longairr' conda environment required to run the LongAIRR functions:
-
-```markdown
-conda env list
-conda activate longairr
-```
-> [!Important]
-> Verify the installation and run the following command to confirm that longairr is properly
-> installed. Be sure the 'longairr' conda environment is activated
-> ```
-> longairr --version
-> longairr --help
-
-## Deinstallation
-
-To uninstall *LongAIRR*, follow these steps:
-Ensure the 'longairr' conda environment is **not** activated,
-Next, navigate to the directory containing the **deinstall.sh** script and run it.
-```markdown
-conda deactivate
-
-cd path/to/LongAIRR/
-bash deinstall.sh
-```
-This script removes the 'longairr' conda environment, deletes the
-*$HOME/.local/bin/longairr/* directory and removes the corresponding entry from your *PATH*.
-
-To fully clean up, you can delete the downloaded LongAIRR directory afterwards.
-___
-[**BACK TO TOP**](#Table-of-Content)
-___
-
-# LongAIRR Software Overview:
-
-This section contains a brief description of the overall functionality of each core module.
 
 LongAIRR can process reads generated with the following library protocols (see Fig. 1):
 
@@ -153,205 +23,25 @@ LongAIRR can process reads generated with the following library protocols (see F
   * [10x Visium HD 3' - Spatial Gene Expression Vers.: CG000805 RevB](https://www.10xgenomics.com/support/spatial-gene-expression-hd-three-prime/documentation/steps/library-construction/visium-hd-3-prime-spatial-gene-expression-user-guide)
   * [SMART-Seq Human BCR (with UMIs)](https://www.takarabio.com/products/next-generation-sequencing/immune-profiling/human-repertoire/smart-seq-human-bcr-with-umis?srsltid=AfmBOoqz0SB9vJtwLHpGINeMqu9hOhdTcYTiH2PtZP4P2h7OG2y7NGmy)
 
-For detailed information regarding the file-/directory output structure, please visit the **Example Snakemake-Workflow Usage** and **Expected Output Directories** section in the [**extended documentation**](#extended-documentation).
+---
 
-> [!Important]
-> Consider checking the related software documentation [*`longairr --help`*] or module-specific help functions, e.g., [*`longairr collapse --help`*] to get detailed parameter information and **example use-cases**:
-> ```markdown
-> (longairr_env) user@laptop:~$ longairr --help
->
->  longairr version: 7.5
->  
->  Usage: longairr [MODUL] [OPTIONS]
->  
->  Description: 
->  
->  Modules:
->    basecall       |  Perform Nanopore basecalling and generate a quality report
->    filter         |  [OPTIONAL] Perform Quality/length filtering and generate a quality report
->    demux          |  [OPTIONAL] Perform Sample demultiplexing on bulk samples
->    collapse       |  Perform annotation of UMI / Spatial barcode sequences,
->                      collapse sequences on specified GROUP field by running MSA and Consensus building
->    seqtag         |  [OPTIONAL] Perform annotation of the constant region or other provided anchor sequences
->    airr           |  Assign V(D)J genes + conversion to AIRR-conform output
->    -h, --help     |  Show this help message and exit
->    -v, --version  |  Show version information and exit
+# Getting started
 
-<figure align="center">
-    <img src="./vignette/figures/longairr_metro.png" width="850" />
-    <figcaption>Figure 2: LongAIRR Software Modules.</figcaption>
-</figure>
-
-### (1) **longairr basecall**
-**longairr basecall**, integrates the [Oxford Nanopore Technologies Dorado duplex basecaller](https://github.com/nanoporetech/dorado?tab=readme-ov-file) to process raw nanopore sequencing reads in ONT’s pod5 format (Figure 2, Module 1). *Dorado duplex* generates duplex reads, in which both complementary cDNA strands of a molecule are sequenced, as well as simplex reads derived from a single strand. Read classification is encoded in the dx BAM tag: dx:1 denotes a duplex read, dx:0 denotes a simplex read without duplex offspring, and dx:-1 denotes a simplex read for which a corresponding duplex read was successfully generated. 
-The [Dorado basecaller](https://github.com/nanoporetech/dorado?tab=readme-ov-file)
-is optimized for GPU usage and currently does not support CPU-only processing. 
-We recommend running this step on a dedicated GPU server, as the processing
-time can range from several hours to days, depending on the number of generated raw
-nanopore long-read sequences.
-
-Users can specify the read-types to retain for LongAIRR processing [`--simplex TRUE|FALSE`], [`--duplex TRUE|FALSE`], the basecalling model, e.g., [`--model sup`] and the corresponding
-GPU to perform basecalling on [`--cuda cuda:all`].
-
-Additionally, a quality report on the raw data is generated using [NanoPlot](https://github.com/wdecoster/nanoplot)
-
-> [!Tip]
-> 1. For detailed parameter descriptions run [*`longairr basecall --help`*]
->
-> 2. Refer to the [dorado documentation](https://github.com/nanoporetech/dorado?tab=readme-ov-file) for detailed information regarding basecalling models.
-
-___
-
-### (2) **longairr filter**
-The second module, **longairr filter**, applies customizable quality and length thresholds [`--min-qual, --minl, --maxl`] to FASTQ files in order to retain high-quality reads and reduce computational load in subsequent steps. In contrast to the basecalling module, this step works **platform-agnostic** and can **process FASTQ files generated by ONT as well as HiFi reads from PacBio sequencing (Figure 2, Module 2)**.
-
-> [!Tip]
-> 1. For detailed parameter descriptions run [*`longairr filter --help`*]
-
-___
-
-### (3) **longairr demux**
-**longairr demux** performs demultiplexing on multiplexed bulk samples using
-Unique Duplex Identifiers (UDIs). It requires a FASTA file containing the UDI 
-sequences as input. This *step is optional*, but it is crucial for correctly 
-assigning reads to their respective samples.
-
-> [!Tip]
-> 1. For detailed parameter descriptions run [*`longairr demux --help`*]
->
-> 2. For optimal results, the `bulk_runX_barcodes.fasta` file should only contain the 
-barcode/UDI sequences used in the specific sequencing run. Including unused barcodes 
-may cause reads to cross-map incorrectly, potentially reducing the number of 
-properly assigned reads.
->
-> Example of `bulk_runX_barcodes.fasta`:
-> ```
-> >UID12
-> GACGAGAG
-> >UID13
-> AGACTTGG
-
-___
-
-### (4) **longairr collapse**
-The fourth module, **longairr collapse**, performs annotation of UMIs and, for spatial datasets, SPBCs from 10x Visium V1 or 10x Visium HD 3’ libraries (Figure 1B, Module 4). Annotation requires a FASTA file containing a user-defined UMI anchor sequence, and for spatial datasets, a reference list of valid spatial barcodes provided by 10x Genomics
-
-> [!Important]
-> To allow correct annotation of UMI and SPBC sequences depending on the read orientation,
-> users need to specify the underlying library used:
->  * **Visium V1:** [`--library visium`]
->  * **Visium HD 3':** [`--library visiumhd`]
->  * **Bulk Takara (with UMIs):**[`--library bulk`]
-> Current default in LongAIRR 7.5 is set to [`--library visium`]
-
-Following UMI and SPBC annotation, reads are grouped into sequence groups representing individual molecules [`--group-field`]. For bulk datasets, grouping is performed based on shared UMI sequences. For spatial datasets, grouping is performed using the combined UMI-SPBC identifier to ensure that molecules originating from different spatial locations within the tissue are processed independently.
-
-<img align="right" src="./vignette/figures/longairr_af_scheme.png" alt="image" />
-
-Prior to consensus building, two complementary filtering strategies can be applied to further reduce noise and remove non-representative reads. The first approach applies fixed-length thresholds,  retaining reads within user-defined bounds [`--minl`, `--maxl`] expected to capture full-length receptor transcripts. In addition, LongAIRR implements a novel **adaptive filtering** strategy within individual sequence groups above a specified minimum size [`--filter-min-size`]. In this step, read-length distributions are evaluated per sequence group, and only reads falling within a defined margin [`--peak-margin`] around the group-specific dominant peak-length (i.e., the most populated length bin) are retained (see Fig. left). By filtering relative to the internal distribution of each group, this approach removes outlier reads while preserving the predominant full-length transcript representation.
-
-To enable scalable processing of large sequence groups, longairr collapse additionally applies a subsampling strategy prior to multiple sequence alignment (MSA). Sequence groups exceeding a user-defined size threshold are reduced to manageable subsets before alignment. Following group-specific MSA, reads are partitioned into chunks that preserve complete sequence groups, enabling parallel consensus generation.
-
-Users may configure subsample size [`--n-subsample`], number of groups per chunk [`--n-chunk`], and the level of parallelization to match available computational resources [`--cjobs`]. Read-specific metadata including the annotated UMI and SPBC-sequences, as well as original- [*N_ORIG*], filtered- [*N_KEEP*]and subsampled group-sizes [*CONSENSUS_COUNT*] are annotated in each read's FASTA-header, supporting traceability throughout downstream analysis (**Figure 2, Module 4**)
-
-> [!Tip]
-> 1. For detailed parameter descriptions run [*`longairr collapse --help`*]
->
-> 2. Example of **bulk_anchor_seq.fasta** for bulk datasets:   
-> ```
-> Linker_seq
-> GTACGGG
-> ```
-> 3. Example of **spatial_anchor_seq.fasta** for spatial datasets:
-> ```
-> r1
-> CTACACGACGCTCTTCCGATCT
-> ```
-> Spatial anchor examples are provided in:
-> `/longairr_example_workflow/example_inputs/required_anchors/spatial_visium/`
-> Bulk Takara anchor examples are provided in:
-> `/longairr_example_workflow/example_inputs/required_anchors/bulk_takara/`
-
-___
-
-### (5) **longairr seqtag**
-The **longairr seqtag** module provides flexible anchor-based annotation of additional read segments. For instance, in immunoglobulin-based bulk datasets, constant region anchors can be used to assign isotype-families. In combined immunoglobulin and T cell receptor spatial AIRR libraries, the module enables separation of sequences into locus-specific subsets prior to V(D)J annotation (Figure 2, Module 5). Anchor sequences are user-defined input provided in FASTA format
-
->[!CAUTION]
-> **For troubleshooting:** If few or no reads are annotated after running longairr seqtag, check the following:
->  - Ensure the specified anchor sequences match the expected constant region sequences for
->    your dataset
->  - Verify the read orientation in relation to your dataset type (bulk or spatial), potentially test the **reverse complement** of the provided anchors
-
->[!Tip]
-> 1. For detailed parameter descriptions run [*`longairr seqtag --help`*]
->
-> 2. Example of **spatial_constant.fasta**:
-> ```
-> >Ig | 1 | IGHA1
-> GCATCCCCGACCAGCCCCAAGGTCTTCCCGCTGAGCCTCTGCAGCACCCAGCCAGATGGG
-> >Ig | 2 | IGHA2
-> GCATCCCCGACCAGCCCCAAGGTCTTCCCGCTGAGCCTCGACAGCACCCCCCAAGATGGG
-> >Ig | 3 | IGHD
-> CACCCACCAAGGCTCCGGATGTGTTCCCCATCATATCAGGGTGCAGACACCCAAAGGATA
-> >Ig | 4 | IGHE
-> GCCTCCACACAGAGCCCATCCGTCTTCCCCTTGACCCGCTGCTGCAAAAACATTCCCTCC
-> >Ig | 5 | IGHG1
-> GCCTCCACCAAGGGCCCATCGGTCTTCCCCCTGGCACCCTCCTCCAAGAGCACCTCTGGG
-> ...
-> ```
-> 2. Example of **bulk_constant.fasta**:
-> ```
-> >IGHM
-> ATGCACTCCC
-> >IGHG
-> TGGTGGAGGC
-> >IGHA
-> TCGGGGATGC
-> >IGHD
-> TGGTGGGTGC
-> >IGHE
-> GTGTGGAGGC
-> ```
-> Exemplary anchor sequences are custom-built and retrieved from the [IMGT](https://www.imgt.org/) reference database.
-> Find example FASTA files in the subdirs `/longairr_example_workflow/required_anchors/`
-
-___
-
-### (6) **longairr airr**
-The final module, **longairr airr**, performs locus-specific annotation of V(D)J and constant gene segments. User-specified IMGT germline references can be configured during LongAIRR installation (see installation section). Furthermore, users **must specify** the [`--loci ig|tr`] parameter to align the reads with the genes of either the **immunoglobulin (ig)** OR **t cell receptor (tr)** genes.
-
-Annotated reads are transformed into tabular, AIRR-compliant outputs. Depending on the selected locus, outputs are located in the *airr* subfolder for each sample with the following naming conventions:
-
-- `ig_p_parse-select.tsv` / `ig_ph_parse-select`
-- `tr_p_parse-select.tsv`
-
-> [!Tip]
-> 1. For detailed parameter descriptions run [*`longairr airr --help`*]
-
-___
-
-[**BACK TO TOP**](#Table-of-Content)
-___
-
-# Extended documentation
-
-The [**Extended documentation**](./vignette/extended_documentation.md) in the `/vignette` subdirectory includes explanations regarding Snakemake and **How to use LongAIRR with the exemplary Snakemake workflows** provided in this repository (`/longairr_example_workflow/snakemake/`)
-
-Additionally, there is an in-depth description on how to use a **config.yaml** file to pass all runtime-parameters as well as a description
-of the **expected output structure** from LongAIRR using the exemplary **Spatial LongAIRR Snakemake Workflow**.
-
-Moreover, the extended documentation contains additional information regarding external resources required for spatial datasets, including a description on **how to retrieve spatial barcode whitelists** from 
-[10x Genomics SpaceRanger](https://www.10xgenomics.com/support/software/space-ranger/latest).
-___
-[**BACK TO TOP**](#Table-of-Content)
-___
+Please refer to the [documentation]().
 
 # Citation
 
---
+If you use LongAIRR in your work, please cite:
 
-___
+> Schuck J, Ortega Iannazzo S, Mahmoud Z, Gwellem Anchang C, Hasse LM,
+> Weber K, and Imkeller K. Consistent consensus-based annotation of spatial
+> adaptive immune receptor repertoires from long-read sequencing using
+> LongAIRR. Preprint at
+> [bioRxiv](https://www.biorxiv.org/content/10.64898/2026.06.22.733709v1)
+> (2026). DOI:
+> [10.64898/2026.06.22.733709](https://doi.org/10.64898/2026.06.22.733709).
+
+---
 
 # Authors
 
@@ -362,5 +52,5 @@ ___
 **Issues/Bug-report**: [LongAIRR-Issues](https://github.com/AGImkeller/LongAIRR/issues)
 
 ___
-[**BACK TO TOP**](#Table-of-Content)
+[**BACK TO TOP**](#longairr)
 ___

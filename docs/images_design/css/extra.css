@@ -1,0 +1,17 @@
+/* Add a home icon to the first navigation entry. */
+.wy-menu-vertical > ul:first-of-type > li.toctree-l1 > a::before {
+  font-family: FontAwesome;
+  content: "\f015";
+  display: inline-block;
+  margin-right: 0.45em;
+} 
+
+/* Project home label above the logo in the blue branding box. */
+.wy-side-nav-search > a::before {
+  content: "\f015  LongAIRR";
+  display: block;
+  margin-bottom: 0.6em;
+  font-family: FontAwesome, "Lato", "Helvetica Neue", Arial, sans-serif;
+  font-size: 100%;
+  font-weight: bold;
+}

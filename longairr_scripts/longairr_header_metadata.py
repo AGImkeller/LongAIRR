@@ -19,7 +19,7 @@ import argparse
 #
 #================================================================#
 
-
+# barcode = first slot; turns into group
 def parse_header_fields(header_line):
     parts = header_line.strip().split("|")
     barcode = parts[0][1:]  # remove '>'
@@ -67,12 +67,16 @@ def build_header(seq_count, barcode, fields, library):
         return new_header
 
     if library == "visiumhd":
-        if "BC1" in fields:
+        if "BC1" in fields: #old
             new_header += f"|BC1={fields['BC1']}"
-        if "BC2" in fields:
+        if "BC2" in fields: #old
             new_header += f"|BC2={fields['BC2']}"
-        if "SPBC10X" in fields:
+        if "SPBC10X" in fields: #old
             new_header += f"|SPBC10X={fields['SPBC10X']}"
+        if "SPBCID" in fields: #new 
+            new_header += f"|SPBCID={fields['SPBCID']}"
+        if "UMISPBC" in fields: #new, bc new default is UMISPBCID
+            new_header += f"|UMISPBC={fields['UMISPBC']}"
 
     return new_header
 

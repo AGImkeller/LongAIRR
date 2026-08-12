@@ -30,26 +30,42 @@ def modify_barcode(barcode, length, forward):
 # Main function parsing every sequence of the input FASTA file and trimming the sequence present in the BARCODE slot
 def trim_umis(input_file, output_file, length, forward, verbose):
     filtered_count = 0
+    skip_record = False
+
     # Process the input file
     with open(input_file, 'r') as infile, open(output_file, 'w') as outfile:
         for line in infile:
             if line.startswith(">"):
+                skip_record = False
+
                 # Extract the BARCODE value
                 barcode_match = re.search(r'\|BARCODE=(\w*)', line)
                 if barcode_match:
                     barcode = barcode_match.group(1)
+
                     # Modify the BARCODE based on the forward parameter
                     new_barcode = modify_barcode(barcode, length, forward)
                     if new_barcode is None:
                         filtered_count += 1
-                        continue  # Skip writing this header if barcode is too short
+                        skip_record = True
+                        continue  # Skip this header and its sequence lines
+
                     # Replace the BARCODE value with the new one
                     line = re.sub(r'BARCODE=\w+', f'UMI={new_barcode}', line)
+
+            if skip_record:
+                continue
+
             outfile.write(line)
 
     # Print the number of filtered sequences if --verbose set to true
     if verbose == "TRUE":
-        print("\n" + f"Number of sequences filtered out due to a UMI length below {length} bp: {filtered_count}" + "\n\n")
+        print(
+            "\n"
+            + f"Number of sequences filtered out due to a UMI length below {length} bp: "
+            + f"{filtered_count}"
+            + "\n\n"
+        )
 
 
 def parse_args():

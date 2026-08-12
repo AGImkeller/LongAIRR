@@ -1,0 +1,78 @@
+site_name: LongAIRR
+site_description: Documentation for long-read adaptive immune receptor repertoire analysis with LongAIRR
+site_author: Jonas Schuck and Katharina Imkeller
+copyright: Copyright © Jonas Schuck and Katharina Imkeller, 2026.
+site_url: !ENV [READTHEDOCS_CANONICAL_URL, "http://127.0.0.1:8000"]
+repo_url: https://github.com/AGImkeller/LongAIRR
+repo_name: AGImkeller/LongAIRR
+edit_uri: edit/devel/docs/
+
+theme:
+  name: readthedocs
+  logo: images_design/images/longairr_logo_small.png
+  titles_only: true
+  include_homepage_in_sidebar: true
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - tables
+  - toc:
+      permalink: true
+
+extra:
+  version: 1.1.0
+
+extra_css:
+  - images_design/css/extra.css
+
+plugins:
+  - search
+  - glightbox:
+      touchNavigation: true
+      loop: false
+      effect: zoom
+      zoomable: true
+      draggable: true
+
+nav:
+  - LongAIRR: index.md
+  - Getting started:
+      - Installation: getting_started/installation.md
+      - Release Notes: getting_started/changelog.md
+  - In-depth:
+      - LongAIRR modules:
+          - Overview: in_depth/longairr_modules/overview.md
+          - longairr basecall: in_depth/longairr_modules/basecall.md
+          - longairr filter: in_depth/longairr_modules/filter.md
+          - longairr demux: in_depth/longairr_modules/demux.md
+          - longairr collapse: in_depth/longairr_modules/collapse.md
+          - longairr seqtag: in_depth/longairr_modules/seqtag.md
+          - longairr airr: in_depth/longairr_modules/airr.md
+          - longairr report: in_depth/longairr_modules/report.md
+      - Expected inputs: 
+          - Sequences, Barcodes, References: in_depth/inputs_outputs/input_files.md
+          - Spatial Barcode Whitelists: 
+              - Visium V1: in_depth/inputs_outputs/spbc_v1.md
+              - Visium HD 3': in_depth/inputs_outputs/spbc_hd3.md
+      - Expected outputs: 
+          - Directories and Files: in_depth/inputs_outputs/output_files.md
+          - (spatial) AIRR-Format: in_depth/inputs_outputs/airr_format.md
+  - Example LongAIRR Workflows:
+      - Workflow overview: example_workflows/overview.md
+      - Run LongAIRR manually: example_workflows/manual.md
+      - Spatial Snakemake workflow: example_workflows/snakemake_spatial.md
+      - Bulk Snakemake workflow: example_workflows/snakemake_bulk.md
+  - Spatial AIRR Downstream analysis:
+      - Vignette 1 - Getting started with spatial AIRR datasets:
+          - Overview: vignettes/vignette_1_spAIRR_start/vignette1_overview.md
+          - Part 1 - start spatial AIRR analysis: vignettes/vignette_1_spAIRR_start/longairr_vignette1_part1.md
+          - Part 2 - explore spatial resolutions: vignettes/vignette_1_spAIRR_start/longairr_vignette1_part2.md
+          - Part 3 - spatial AIRR with `scRepertoire`: vignettes/vignette_1_spAIRR_start/longairr_vignette1_part3.md
+  - About:
+      - Contact & Citation: about_misc/contact_citation.md
+      - FAQ / Troubleshooting: about_misc/troubleshooting.md
+      - Used Software: about_misc/software_references.md
+      - License: about_misc/license.md
+
