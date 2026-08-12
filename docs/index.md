@@ -6,12 +6,17 @@
 
 ![Overview of the LongAIRR workflow](images_design/images/longairr_profiling_overview.png)
 
-**LongAIRR** is a modular command-line tool for processing and annotating
-full-length immunoglobulin and T-cell receptor sequences from long-read
-sequencing data.
+**LongAIRR** is a modular command-line framework for processing and annotating 
+full-length adaptive immune receptor repertoire (AIRR) sequences from 
+long-read bulk and spatial transcriptomic libraries.
+LongAIRR supports Oxford Nanopore Technologies (ONT) and PacBio HiFi data and
+combines read filtering, UMI and spatial-barcode annotation, adaptive 
+read filtering, consensus generation, receptor tagging and V(D)J annotation
+to produce AIRR-compliant outputs. It can be run manually or integrated into
+workflow managers such as Snakemake. Its outputs are interoperable with 
+established downstream AIRR analysis frameworks including [Immcantation](https://immcantation.readthedocs.io/en/stable/) and [scRepertoire](https://www.bioconductor.org/packages/release/bioc/vignettes/scRepertoire/inst/doc/vignette.html).
 
-LongAIRR can process AIRR reads generated with Oxford Nanopore Technologies and PacBio HiFi 
-sequencing using the following bulk and spatial library protocols:
+Suported bulk and spatial library protocols:
 
   * [10x Visium V1 - Spatial Gene Expression Vers.: CG000239 RevF](https://www.10xgenomics.com/support/spatial-gene-expression-fresh-frozen/documentation/steps/library-construction/visium-spatial-gene-expression-reagent-kits-user-guide)
   * [10x Visium HD 3' - Spatial Gene Expression Vers.: CG000805 RevB](https://www.10xgenomics.com/support/spatial-gene-expression-hd-three-prime/documentation/steps/library-construction/visium-hd-3-prime-spatial-gene-expression-user-guide)
