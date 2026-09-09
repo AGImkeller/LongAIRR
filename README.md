@@ -4,7 +4,7 @@
 ![Downloads](https://anaconda.org/bioconda/longairr/badges/downloads.svg)
 
 [![Documentation Status](https://app.readthedocs.org/projects/longairr/badge/?version=latest)](https://longairr.readthedocs.io/en/latest/)
-[![Install from GitHub](https://img.shields.io/badge/install-instructions-2ea44f.svg)](./docs/getting_started/installation.md)
+[![Installation](https://img.shields.io/badge/install-instructions-2ea44f.svg)](https://longairr.readthedocs.io/en/latest/getting_started/installation/)
 
 # LongAIRR <img src="./docs/images_design/images/longairr_logo_small.png" align="right" height="150" alt="logo" />
 
