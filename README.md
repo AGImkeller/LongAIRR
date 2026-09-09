@@ -1,8 +1,10 @@
 
 [![GitHub release](https://img.shields.io/github/v/release/AGImkeller/LongAIRR)](https://github.com/AGImkeller/LongAIRR/releases)
-[![Documentation Status](https://app.readthedocs.org/projects/longairr/badge/?version=latest)](https://longairr.readthedocs.io/en/latest/)
-[![Install from GitHub](https://img.shields.io/badge/install-GitHub-2ea44f.svg)](./docs/getting_started/installation.md#github)
+![Bioconda release](https://anaconda.org/bioconda/longairr/badges/latest_release_relative_date.svg)
+![Downloads](https://anaconda.org/bioconda/longairr/badges/downloads.svg)
 
+[![Documentation Status](https://app.readthedocs.org/projects/longairr/badge/?version=latest)](https://longairr.readthedocs.io/en/latest/)
+[![Installation](https://img.shields.io/badge/install-instructions-2ea44f.svg)](https://longairr.readthedocs.io/en/latest/getting_started/installation/)
 
 # LongAIRR <img src="./docs/images_design/images/longairr_logo_small.png" align="right" height="150" alt="logo" />
 
@@ -23,7 +25,7 @@ established downstream AIRR analysis frameworks including [Immcantation](https:/
   <img src="./docs/images_design/images/longairr_profiling_overview.png" width="800" />
 </p>
 
-Supported library protocols (see Fig. 1):
+Supported library protocols (see above):
 
   * [10x Visium V1 - Spatial Gene Expression Vers.: CG000239 RevF](https://www.10xgenomics.com/support/spatial-gene-expression-fresh-frozen/documentation/steps/library-construction/visium-spatial-gene-expression-reagent-kits-user-guide)
   * [10x Visium HD 3' - Spatial Gene Expression Vers.: CG000805 RevB](https://www.10xgenomics.com/support/spatial-gene-expression-hd-three-prime/documentation/steps/library-construction/visium-hd-3-prime-spatial-gene-expression-user-guide)

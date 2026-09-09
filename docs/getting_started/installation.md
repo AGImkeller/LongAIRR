@@ -5,6 +5,8 @@ matches your library and starting data.
 
 **Development versions** and source code are available on [GitHub](https://github.com/AGImkeller/LongAIRR)
 
+**Stable releases** can be installed from [Bioconda](https://anaconda.org/channels/bioconda/packages/longairr/overview), see [below](#bioconda-recommended) for instructions.
+
 Setting up **reference databases** is described further [below](#extra-dependencies)
 
 ## Installation | Linux
@@ -22,6 +24,28 @@ curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Mi
 bash Miniforge3-$(uname)-$(uname -m).sh
 conda activate base
 ```
+
+### Bioconda (recommended)
+
+Install [LongAIRR from Bioconda](https://anaconda.org/bioconda/longairr) in a dedicated Conda environment:
+
+```bash
+conda create -n longairr -c conda-forge -c bioconda --strict-channel-priority longairr
+
+conda activate longairr
+```
+
+Verify the installation:
+
+```bash
+longairr --version
+longairr --help
+```
+
+Conda installs the packaged software dependencies automatically.
+Find additional requirements, e.g. setting up reference databases or installing Dorado for basecalling in the [section below](#requirements). These steps will use `longairr-setup`, which is linked to the install.sh provided in the LongAIRR repository,
+but specifically sets `--env FALSE`.
+
 
 ### GitHub
 
@@ -69,26 +93,58 @@ bash deinstall.sh
 
 ### Extra dependencies
 
-- **longairr basecall** requires a compatible GPU and Dorado installation. If you
-  install LongAIRR manually from GitHub, Dorado will be installed on your system.
+#### Dorado for basecalling
+---
+**longairr basecall** requires a compatible GPU and Dorado installation. If you
+install LongAIRR manually from GitHub, Dorado will be installed on your system when using `--dorado TRUE`.
   
-  If the reads have already been basecalled, the remaining LongAIRR modules can
-  be run without a GPU and without a Dorado installation.
+If the reads have already been basecalled, the remaining LongAIRR modules can
+be run without a GPU and without a Dorado installation.
+
+**Installed via Bioconda, use:**
+
+```bash
+longairr-setup --dorado TRUE
+source "$HOME/.bashrc"
+```
+
+**Installed from GitHub, use:**
 
 ```bash
   # Install Dorado only
   bash install.sh \
     --env FALSE \
     --dorado TRUE
+  source "$HOME/.bashrc"
+```
+<br>
+
+#### Spatial barcode whitelists
+---
+
+**longairr collapse** requires a spatial barcode whitelist from **10x Genomics** 
+**SpaceRanger** for spAIRR datasets (Visium / Visium HD 3').
+Refer to our [Spatial Barcode Whitelist](../index.md#in-depth) section
+
+<br>
+
+#### Reference databases
+---
+
+**longairr airr** requires **IgBLAST databases and IMGT germline references**. They
+can be downloaded using the installation script:
+
+**Installed via Bioconda, use:**
+
+```bash
+longairr-setup \
+  --fetch-db TRUE \
+  --save-db /absolute/path/to/reference-parent/ \
+  --species human \
+  --dorado FALSE
 ```
 
-- **longairr collapse** requires a spatial barcode whitelist from **10x Genomics** 
-**SpaceRanger**
-  for spAIRR datasets (Visium / Visium HD 3').
-  Refer to our [Spatial Barcode Whitelist](../index.md#in-depth) section
-
-- **longairr airr** requires **IgBLAST databases and IMGT germline references**. They
-  can be downloaded using the installation script:
+**Installed from GitHub, use:**
 
 ```bash
   # Download and set up the database references (no env, no dorado)

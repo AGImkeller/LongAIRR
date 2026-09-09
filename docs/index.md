@@ -1,6 +1,10 @@
 
-[![bioRxiv](https://img.shields.io/badge/bioRxiv-10.64898%2F2026.06.22.733709-B31B1B.svg)](https://doi.org/10.64898/2026.06.22.733709)
-[![Install from GitHub](https://img.shields.io/badge/install-GitHub-2ea44f.svg)](./getting_started/installation.md#github)
+[![GitHub release](https://img.shields.io/github/v/release/AGImkeller/LongAIRR)](https://github.com/AGImkeller/LongAIRR/releases)
+![Bioconda release](https://anaconda.org/bioconda/longairr/badges/latest_release_relative_date.svg)
+![Downloads](https://anaconda.org/bioconda/longairr/badges/downloads.svg)
+
+[![LongAIRR GitHub](https://img.shields.io/badge/LongAIRR-GitHub-2ea44f.svg)](https://github.com/AGImkeller/LongAIRR)
+[![LongAIRR-Whitelist GitHub](https://img.shields.io/badge/LongAIRR_Whitelist-GitHub-2ea44f.svg)](https://github.com/AGImkeller/LongAIRR_whitelist)
 
 # LongAIRR
 
@@ -16,7 +20,7 @@ to produce AIRR-compliant outputs. It can be run manually or integrated into
 workflow managers such as Snakemake. Its outputs are interoperable with 
 established downstream AIRR analysis frameworks including [Immcantation](https://immcantation.readthedocs.io/en/stable/) and [scRepertoire](https://www.bioconductor.org/packages/release/bioc/vignettes/scRepertoire/inst/doc/vignette.html).
 
-Suported bulk and spatial library protocols:
+Supported bulk and spatial library protocols:
 
   * [10x Visium V1 - Spatial Gene Expression Vers.: CG000239 RevF](https://www.10xgenomics.com/support/spatial-gene-expression-fresh-frozen/documentation/steps/library-construction/visium-spatial-gene-expression-reagent-kits-user-guide)
   * [10x Visium HD 3' - Spatial Gene Expression Vers.: CG000805 RevB](https://www.10xgenomics.com/support/spatial-gene-expression-hd-three-prime/documentation/steps/library-construction/visium-hd-3-prime-spatial-gene-expression-user-guide)
@@ -26,7 +30,10 @@ Suported bulk and spatial library protocols:
 
 **Find an overview of chapters included in this documentation** [below](#getting-started)
 
-Find the preprint on **bioRxiv**, doi: [2026.06.22.733709](https://doi.org/10.64898/2026.06.22.733709)
+Find the preprint on **bioRxiv**, 
+doi: [2026.06.22.733709](https://doi.org/10.64898/2026.06.22.733709)
+
+[![bioRxiv](https://img.shields.io/badge/bioRxiv-10.64898%2F2026.06.22.733709-B31B1B.svg)](https://doi.org/10.64898/2026.06.22.733709)
 
 ---
 
